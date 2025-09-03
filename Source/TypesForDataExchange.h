@@ -44,17 +44,11 @@ struct PannerSettings
     bool lockOutputLayout = false;
     bool gainCompensationMode = true; // used for gain compensation when changing the output mode
 
-#ifdef ITD_PARAMETERS
-    bool itdActive = false;
-    int delayTime = 600;
-    float delayDistance = 1.0;
-#endif
-
     // ITD Headshadow parameters (Pro feature)
     bool headshadowActive = false;
-    float headshadowDelayTime = 0.8f; // 0.4ms to 2ms range
-    float headshadowFeedback = 0.0f;  // 0 to 0.95 range
+    int headshadowDelayTime = 600; // 0.4ms to 2ms range
     float headshadowWetGain = 0.0f;   // -60dB to +6dB range
+    float delayDistance = 1.0;
 };
 
 struct MixerSettings

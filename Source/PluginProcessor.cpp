@@ -31,16 +31,10 @@ juce::String M1PannerAudioProcessor::paramGainCompensationMode("gainCompensation
 juce::String M1PannerAudioProcessor::paramInputMode("inputMode");
 juce::String M1PannerAudioProcessor::paramOutputMode("outputMode");
 #endif
-#ifdef ITD_PARAMETERS
-juce::String M1PannerAudioProcessor::paramITDActive("ITDProcessing");
-juce::String M1PannerAudioProcessor::paramDelayTime("DelayTime");
-juce::String M1PannerAudioProcessor::paramDelayDistance("ITDDistance");
-#endif
 
 // ITD Headshadow parameters (Pro feature)
 juce::String M1PannerAudioProcessor::paramHeadshadowActive("HeadshadowActive");
 juce::String M1PannerAudioProcessor::paramHeadshadowDelayTime("HeadshadowDelayTime");
-juce::String M1PannerAudioProcessor::paramHeadshadowFeedback("HeadshadowFeedback");
 juce::String M1PannerAudioProcessor::paramHeadshadowWetGain("HeadshadowWetGain");
 
 //==============================================================================
@@ -63,15 +57,9 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
           // Note: Change init output to max bus size when new formats are introduced
           std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramOutputMode, 1), TRANS("Output Mode"), 0, Mach1EncodeOutputMode::M1Spatial_14, Mach1EncodeOutputMode::M1Spatial_8),
 #endif
-#ifdef ITD_PARAMETERS
-          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramITDActive, 1), TRANS("ITD"), pannerSettings.itdActive),
-          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramDelayTime, 1), TRANS("Delay Time (max)"), juce::NormalisableRange<float>(0.0f, 10000.0f, 1.0f), pannerSettings.delayTime, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(1).getFloatValue(); }),
-          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramDelayDistance, 1), TRANS("Delay Distance"), juce::NormalisableRange<float>(0.0f, 10000.0f, 0.01f), pannerSettings.delayDistance, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + ""; }, [](const juce::String& t) { return t.dropLastCharacters(1).getFloatValue(); }),
-#endif
           // ITD Headshadow parameters (Pro feature)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowActive, 1), TRANS("Headshadow Active"), pannerSettings.headshadowActive),
-          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), juce::NormalisableRange<float>(0.4f, 2.0f, 0.01f), pannerSettings.headshadowDelayTime, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2) + "ms"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getFloatValue(); }),
-          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowFeedback, 1), TRANS("Headshadow Feedback"), juce::NormalisableRange<float>(0.0f, 0.95f, 0.01f), pannerSettings.headshadowFeedback, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }, [](const juce::String& t) { return t.getFloatValue(); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 0, 10000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowWetGain, 1), TRANS("Headshadow Wet Gain"), juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), pannerSettings.headshadowWetGain, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }, [](const juce::String& t) { return t.dropLastCharacters(3).getFloatValue(); }),
                                                                       })
 {
@@ -90,16 +78,10 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
     parameters.addParameterListener(paramInputMode, this);
     parameters.addParameterListener(paramOutputMode, this);
 #endif
-#ifdef ITD_PARAMETERS
-    parameters.addParameterListener(paramITDActive, this);
-    parameters.addParameterListener(paramDelayTime, this);
-    parameters.addParameterListener(paramDelayDistance, this);
-#endif
     
     // ITD Headshadow parameter listeners
     parameters.addParameterListener(paramHeadshadowActive, this);
     parameters.addParameterListener(paramHeadshadowDelayTime, this);
-    parameters.addParameterListener(paramHeadshadowFeedback, this);
     parameters.addParameterListener(paramHeadshadowWetGain, this);
 
     // Setup osc and listener
@@ -438,31 +420,15 @@ void M1PannerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     // Checks if output bus is non DISCRETE layout and fixes host specific channel ordering issues
     fillChannelOrderArray(pannerSettings.m1Encode.getOutputChannelsCount());
 
-#ifdef ITD_PARAMETERS
-    mSampleRate = sampleRate;
-    mDelayTimeSmoother.reset(samplesPerBlock);
-    mDelayTimeSmoother.setValue(0);
-
-    ring.reset(new RingBuffer(pannerSettings..getOutputChannelsCount(), 64 * sampleRate));
-    ring->clear();
-
-    // sample buffer for 2 seconds + MAX_NUM_CHANNELS buffers safety
-    mDelayBuffer.setSize(pannerSettings..getOutputChannelsCount(), (float)pannerSettings.m1Encode.getOutputChannelsCount() * (samplesPerBlock + sampleRate), false, false);
-    mDelayBuffer.clear();
-    mExpectedReadPos = -1;
-#endif
-
     // Initialize headshadow delay buffer (Pro feature)
     headshadowDelayBuffer.reset(new RingBuffer(pannerSettings.m1Encode.getOutputChannelsCount(), 64 * sampleRate));
     headshadowDelayBuffer->clear();
     
     // Initialize headshadow smoothers
-    headshadowDelayTimeSmoother.reset(samplesPerBlock);
-    headshadowDelayTimeSmoother.setValue(pannerSettings.headshadowDelayTime);
-    headshadowFeedbackSmoother.reset(samplesPerBlock);
-    headshadowFeedbackSmoother.setValue(pannerSettings.headshadowFeedback);
-    headshadowWetGainSmoother.reset(samplesPerBlock);
-    headshadowWetGainSmoother.setValue(pannerSettings.headshadowWetGain);
+    headshadowDelayTimeSmoother.reset(sampleRate, 0.05); // 50ms smoothing time
+    headshadowDelayTimeSmoother.setCurrentAndTargetValue(pannerSettings.headshadowDelayTime);
+    headshadowWetGainSmoother.reset(sampleRate, 0.05);
+    headshadowWetGainSmoother.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(pannerSettings.headshadowWetGain));
 
     // Initialize OSC if not already done
     if (!pannerOSC) {
@@ -594,39 +560,6 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
         pannerSettings.gainCompensationMode = newValue;
         parameters.getParameter(paramGainCompensationMode)->setValue(newValue);
     }
-#ifdef ITD_PARAMETERS
-    else if (parameterID == paramITDActive)
-    {
-        // Check if ITD processing is unlocked
-        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing))
-        {
-            pannerSettings.itdActive = (bool)newValue;
-            parameters.getParameter(paramITDActive)->setValue((bool)newValue);
-        }
-        else
-        {
-            // Feature is locked, reset to false and show alert
-            parameters.getParameter(paramITDActive)->setValue(false);
-            pannerSettings.itdActive = false;
-            
-            Mach1::AlertData alert;
-            alert.title = "Feature Locked";
-            alert.message = "ITD Processing requires a Pro license. This feature provides advanced inter-aural time delay processing for enhanced spatial audio.";
-            alert.buttonText = "Learn More";
-            postAlert(alert);
-        }
-    }
-    else if (parameterID == paramDelayTime)
-    {
-        pannerSettings.delayTime = newValue;
-        parameters.getParameter(paramDelayTime)->setValue(newValue);
-    }
-    else if (parameterID == paramDelayDistance)
-    {
-        pannerSettings.delayDistance = newValue;
-        parameters.getParameter(paramDelayDistance)->setValue(newValue);
-    }
-#endif
     else if (parameterID == "output_layout_lock")
     {
         pannerSettings.lockOutputLayout = (bool)newValue;
@@ -634,38 +567,32 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
     }
     else if (parameterID == paramHeadshadowActive)
     {
-        // Check if Headshadow processing is unlocked (Pro feature)
-        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing)) // Using ITD feature gate for now
-        {
+//        // Check if headshadow processing is unlocked
+//        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing))
+//        {
             pannerSettings.headshadowActive = (bool)newValue;
             headshadowActive = (bool)newValue;
             parameters.getParameter(paramHeadshadowActive)->setValue((bool)newValue);
-        }
-        else
-        {
-            // Feature is locked, reset to false and show alert
-            parameters.getParameter(paramHeadshadowActive)->setValue(false);
-            pannerSettings.headshadowActive = false;
-            headshadowActive = false;
-            
-            Mach1::AlertData alert;
-            alert.title = "Feature Locked";
-            alert.message = "Headshadow Processing requires a Pro license. This feature provides advanced spatial audio processing with inverse encoding.";
-            alert.buttonText = "Learn More";
-            postAlert(alert);
-        }
+//        }
+//        else
+//        {
+//            // Feature is locked, reset to false and show alert
+//            parameters.getParameter(paramHeadshadowActive)->setValue(false);
+//            pannerSettings.headshadowActive = false;
+//            headshadowActive = false;
+//            
+//            Mach1::AlertData alert;
+//            alert.title = "Feature Locked";
+//            alert.message = "Headshadow Processing requires a Pro license. This feature provides advanced spatial audio processing with inverse encoding.";
+//            alert.buttonText = "Learn More";
+//            postAlert(alert);
+//        }
     }
     else if (parameterID == paramHeadshadowDelayTime)
     {
-        pannerSettings.headshadowDelayTime = newValue;
-        headshadowDelayTime = newValue;
-        parameters.getParameter(paramHeadshadowDelayTime)->setValue(newValue);
-    }
-    else if (parameterID == paramHeadshadowFeedback)
-    {
-        pannerSettings.headshadowFeedback = newValue;
-        headshadowFeedback = newValue;
-        parameters.getParameter(paramHeadshadowFeedback)->setValue(newValue);
+        pannerSettings.headshadowDelayTime = (int)newValue;
+        headshadowDelayTime = (int)newValue;
+        parameters.getParameter(paramHeadshadowDelayTime)->setValue((int)newValue);
     }
     else if (parameterID == paramHeadshadowWetGain)
     {
@@ -898,6 +825,44 @@ void M1PannerAudioProcessor::updateM1EncodePoints()
     }
 
     pannerSettings.m1Encode.generatePointResults();
+    
+    // Configure m1EncodeInverse for headshadow processing (Pro feature)
+    if (headshadowActive)
+    {
+        // Set up m1EncodeInverse with same input/output modes
+        m1EncodeInverse.setInputMode(pannerSettings.m1Encode.getInputMode());
+        m1EncodeInverse.setOutputMode(pannerSettings.m1Encode.getOutputMode());
+        
+        // Same azimuth and elevation, but negative diverge for inverse effect
+        m1EncodeInverse.setAzimuthDegrees(pannerSettings.azimuth);
+        m1EncodeInverse.setElevationDegrees(pannerSettings.elevation);
+        m1EncodeInverse.setDiverge(-(_diverge / 100)); // Negative diverge for inverse
+        m1EncodeInverse.setOutputGain(pannerSettings.gain, true);
+        
+        // Same panner mode settings
+        m1EncodeInverse.setAutoOrbit(pannerSettings.autoOrbit);
+        m1EncodeInverse.setOrbitRotationDegrees(pannerSettings.stereoOrbitAzimuth);
+        m1EncodeInverse.setStereoSpread(pannerSettings.stereoSpread / 100.0);
+        m1EncodeInverse.setGainCompensationActive(pannerSettings.gainCompensationMode);
+        
+        if (pannerSettings.isotropicMode)
+        {
+            if (pannerSettings.equalpowerMode)
+            {
+                m1EncodeInverse.setPannerMode(Mach1EncodePannerMode::IsotropicEqualPower);
+            }
+            else
+            {
+                m1EncodeInverse.setPannerMode(Mach1EncodePannerMode::IsotropicLinear);
+            }
+        }
+        else
+        {
+            m1EncodeInverse.setPannerMode(Mach1EncodePannerMode::PeriphonicLinear);
+        }
+        
+        m1EncodeInverse.generatePointResults();
+    }
 }
 
 void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -947,6 +912,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     // Set m1Encode obj values for processing
     auto gainCoeffs = pannerSettings.m1Encode.getGains();
+    auto headshadowGainCoeffs = headshadowActive ? m1EncodeInverse.getGains() : std::vector<std::vector<float>>();
 
     // vector of input channel buffers
     juce::AudioSampleBuffer mainInput = getBusBuffer(buffer, true, 0);
@@ -955,10 +921,8 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // output buffers
     juce::AudioSampleBuffer mainOutput = getBusBuffer(buffer, false, 0);
 
-#ifdef ITD_PARAMETERS
-    mDelayTimeSmoother.setTargetValue(delayTimeParameter->get());
-    const float udtime = mDelayTimeSmoother.getNextValue() * mSampleRate / 1000000; // number of samples in a microsecond * number of microseconds
-#endif
+    // Update headshadow delay time smoother
+    headshadowDelayTimeSmoother.setTargetValue(headshadowDelayTime);
 
     // input pan balance for stereo input
     if (mainInput.getNumChannels() > 1 && pannerSettings.m1Encode.getInputMode() == Mach1EncodeInputMode::Stereo)
@@ -979,6 +943,18 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         audioDataIn[input_channel].resize(buffer.getNumSamples(), 0.0);
     }
+    
+    // Resize headshadow processing buffer for copied input signals
+    if (headshadowActive)
+    {
+        headshadowAudioDataIn.resize(mainInput.getNumChannels());
+        for (int input_channel = 0; input_channel < mainInput.getNumChannels(); input_channel++)
+        {
+            headshadowAudioDataIn[input_channel].resize(buffer.getNumSamples(), 0.0);
+            // Copy input data to headshadow buffer
+            memcpy(headshadowAudioDataIn[input_channel].data(), mainInput.getReadPointer(input_channel), sizeof(float) * buffer.getNumSamples());
+        }
+    }
 
     // input channel setup loop
     for (int input_channel = 0; input_channel < pannerSettings.m1Encode.getInputChannelsCount(); input_channel++)
@@ -989,6 +965,10 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             for (int output_channel = 0; output_channel < pannerSettings.m1Encode.getOutputChannelsCount(); output_channel++)
             {
                 smoothedChannelCoeffs[input_channel][output_channel].setTargetValue(0.0f);
+                if (headshadowActive)
+                {
+                    headshadowSmoothedChannelCoeffs[input_channel][output_channel].setTargetValue(0.0f);
+                }
             }
         }
         else
@@ -996,11 +976,29 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             // Copy input data to additional buffer
             memcpy(audioDataIn[input_channel].data(), mainInput.getReadPointer(input_channel), sizeof(float) * buffer.getNumSamples());
 
+            // Copy input data to headshadow buffer if headshadow is active
+            if (headshadowActive)
+            {
+                memcpy(headshadowAudioDataIn[input_channel].data(), mainInput.getReadPointer(input_channel), sizeof(float) * buffer.getNumSamples());
+            }
+
             // output channel setup loop
             for (int output_channel = 0; output_channel < pannerSettings.m1Encode.getOutputChannelsCount(); output_channel++)
             {
                 // Set coefficients using M1 channel order (reordering applied later)
                 smoothedChannelCoeffs[input_channel][output_channel].setTargetValue(gainCoeffs[input_channel][output_channel]);
+                
+                // Set headshadow coefficients if active
+                if (headshadowActive)
+                {
+                    auto headshadowGainCoeffs = m1EncodeInverse.getGains();
+                    if (!headshadowGainCoeffs.empty() && 
+                        headshadowGainCoeffs.size() > input_channel && 
+                        headshadowGainCoeffs[input_channel].size() > output_channel)
+                    {
+                        headshadowSmoothedChannelCoeffs[input_channel][output_channel].setTargetValue(headshadowGainCoeffs[input_channel][output_channel]);
+                    }
+                }
             }
         }
     }
@@ -1008,7 +1006,9 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // multichannel temp buffer (also used for informing meters even when not processing to write pointers
     // Note: Use buf.getNumChannels() for output size from this point on to not mismatch from new m1Encode size requests
     juce::AudioBuffer<float> buf(pannerSettings.m1Encode.getOutputChannelsCount(), buffer.getNumSamples());
+    juce::AudioBuffer<float> headshadow_buf(pannerSettings.m1Encode.getOutputChannelsCount(), buffer.getNumSamples());
     buf.clear();
+    headshadow_buf.clear();
     // multichannel output buffer (if internal processing is active this will have the above copy into it)
     float* const* outBuffer = mainOutput.getArrayOfWritePointers();
 
@@ -1043,6 +1043,16 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             {
                 // Get each input sample per channel
                 float inValue = audioDataIn[input_channel][sample];
+                float headshadowInValue;
+
+                if (headshadowActive && input_channel < headshadowAudioDataIn.size())
+                {
+                    headshadowInValue = headshadowAudioDataIn[input_channel][sample];
+                }
+                else
+                {
+                    headshadowInValue = inValue; // Fallback to main input
+                }
 
                 // Apply to each of the output channels per input channel
                 for (int output_channel = 0; output_channel < buf.getNumChannels(); output_channel++)
@@ -1058,6 +1068,15 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                         // Get the next Mach1Encode coeff
                         float spatialGainCoeff = smoothedChannelCoeffs[input_channel][output_channel].getNextValue();
                         buf.addSample(output_channel, sample, inValue * spatialGainCoeff);
+                        
+                        // Get the next inverse Mach1Encode coeff
+                        if (headshadowActive && 
+                            input_channel < headshadowSmoothedChannelCoeffs.size() && 
+                            output_channel < headshadowSmoothedChannelCoeffs[input_channel].size())
+                        {
+                            float headshadowSpatialGainCoeff = headshadowSmoothedChannelCoeffs[input_channel][output_channel].getNextValue();
+                            headshadow_buf.addSample(output_channel, sample, headshadowInValue * headshadowSpatialGainCoeff);
+                        }
                     }
 
                     if (external_spatialmixer_active || mainOutput.getNumChannels() <= 2)
@@ -1074,44 +1093,76 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                         }
                         else
                         {
-#ifdef ITD_PARAMETERS
-                            //SIMPLE DELAY
-                            // scale delayCoeffs to be normalized
-                            for (int i = 0; i < pannerSettings.m1Encode.getInputChannelsCount(); i++)
-                            {
-                                for (int o = 0; o < pannerSettings.m1Encode.getOutputChannelsCount(); o++)
-                                {
-                                    delayCoeffs[i][o] = std::min(0.25f, delayCoeffs[i][o]); // clamp maximum to .25f
-                                    delayCoeffs[i][o] *= 4.0f; // rescale range to 0.0->1.0
-                                    // Incorporate the distance delay multiplier
-                                    // using min to correlate delayCoeffs as multiplier increases
-                                    //delayCoeffs[i][o] = std::min<float>(1.0f, (delayCoeffs[i][o]+0.01f) * (float)delayDistanceParameter->get()/100.);
-                                    //delayCoeffs[i][o] *= delayDistanceParameter->get()/10.;
-                                }
-                            }
-
-                            if ((bool)*itdParameter)
-                            {
-                                for (int sample = 0; sample < numSamples; sample++)
-                                {
-                                    // write original to delay
-                                    float udtime = mDelayTimeSmoother.getNextValue() * mSampleRate / 1000000; // number of samples in a microsecond * number of microseconds
-                                    for (auto channel = 0; channel < pannerSettings.m1Encode.getOutputChannelsCount(); channel++)
-                                    {
-                                        ring->pushSample(channel, outBuffer[channel][sample]);
-                                    }
-                                    for (int channel = 0; channel < pannerSettings.m1Encode.getOutputChannelsCount(); channel++)
-                                    {
-                                        outBuffer[channel][sample] = (outBuffer[channel][sample] * 0.707106781) + (ring->getSampleAtDelay(channel, udtime * delayCoeffs[0][channel]) * 0.707106781); // pan-law applied via `0.707106781`
-                                    }
-                                    ring->increment();
-                                }
-                            }
-#endif // end of ITD_PARAMETERS
+                            // Skip direct output writing here - let channel reordering section handle it after headshadow processing
                         }
                     }
                 }
             }
+        }
+    }
+
+    // HEADSHADOW DELAY PROCESSING (based on old ITD logic)
+    if (headshadowActive)
+    {
+        // Get headshadow coefficients from m1EncodeInverse
+        auto headshadowGainCoeffs = m1EncodeInverse.getGains();
+        
+        // Debug: Print headshadow info once per buffer
+        static int debugCounter = 0;
+        if (debugCounter++ % 100 == 0) // Every ~2 seconds at 44.1kHz
+        {
+            DBG("=== HEADSHADOW DEBUG ===");
+            DBG("Active: True, DelayTime: " + juce::String(headshadowDelayTime) + "μs, WetGain: " + juce::String(headshadowWetGain) + "dB");
+            DBG("Main buf channels: " + juce::String(buf.getNumChannels()) + ", Headshadow buf channels: " + juce::String(headshadow_buf.getNumChannels()));
+            DBG("HeadshadowAudioDataIn size: " + juce::String(headshadowAudioDataIn.size()));
+            DBG("GainCoeffs size: " + juce::String(headshadowGainCoeffs.size()) + "x" + 
+                (headshadowGainCoeffs.size() > 0 ? juce::String(headshadowGainCoeffs[0].size()) : juce::String("0")));
+        }
+        
+        // Scale headshadow coeffs to be normalized (like old delayCoeffs logic)
+        std::vector<std::vector<float>> delayCoeffs(pannerSettings.m1Encode.getInputChannelsCount(), 
+                                                   std::vector<float>(pannerSettings.m1Encode.getOutputChannelsCount(), 0.0f));
+        
+        for (int i = 0; i < pannerSettings.m1Encode.getInputChannelsCount(); i++)
+        {
+            for (int o = 0; o < pannerSettings.m1Encode.getOutputChannelsCount(); o++)
+            {
+                if (headshadowGainCoeffs.size() > i && headshadowGainCoeffs[i].size() > o)
+                {
+                    delayCoeffs[i][o] = std::min(0.25f, std::abs(headshadowGainCoeffs[i][o])); // clamp maximum to .25f
+                    delayCoeffs[i][o] *= 4.0f; // rescale range to 0.0->1.0
+                }
+            }
+        }
+        
+        // Apply delay processing per sample (like old logic)
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++)
+        {
+            // Get current delay time (convert microseconds to samples)
+            int currentDelayTime = headshadowDelayTimeSmoother.getNextValue();
+            float udtime = currentDelayTime * getSampleRate() / 1000000.0f; // microseconds to samples
+            
+            // Apply delay effect with pan law (like old logic)
+            for (int channel = 0; channel < pannerSettings.m1Encode.getOutputChannelsCount(); channel++)
+            {
+                if (channel < headshadow_buf.getNumChannels())
+                {
+                    float originalSample = headshadow_buf.getSample(channel, sample);
+                    
+                    // Read delayed sample BEFORE writing new one
+                    float delayedSample = headshadowDelayBuffer->getSampleAtDelay(channel, udtime * delayCoeffs[0][channel]);
+                    
+                    // Write original to delay buffer for future samples
+                    headshadowDelayBuffer->pushSample(channel, originalSample);
+                    
+                    // Apply pan-law like old logic (original * pan-law + delayed * pan-law)
+                    float processedSample = (originalSample * 0.707106781f) + (delayedSample * 0.707106781f);
+                    
+                    headshadow_buf.setSample(channel, sample, processedSample);
+                }
+            }
+            
+            headshadowDelayBuffer->increment();
         }
     }
 
@@ -1123,17 +1174,29 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         {
             for (int sample = 0; sample < buffer.getNumSamples(); sample++)
             {
-                mainOutput.addSample(output_channel_reordered, sample, buf.getSample(output_channel, sample));
+                float mainSample = buf.getSample(output_channel, sample);
+                
+                if (headshadowActive)
+                {
+                    float wetGain = juce::Decibels::decibelsToGain(headshadowWetGain);
+                    float headshadowSample = headshadow_buf.getSample(output_channel, sample) * wetGain;
+                    float mixed_sample = mainSample + headshadowSample;
+                    mainOutput.addSample(output_channel_reordered, sample, mixed_sample);
+                }
+                else
+                {
+                    mainOutput.addSample(output_channel_reordered, sample, mainSample);
+                }
             }
         }
     }
 
     // update meters
-         outputMeterValuedB.resize(mainOutput.getNumChannels()); // expand meter UI number
-     for (int output_channel = 0; output_channel < mainOutput.getNumChannels(); output_channel++)
-     {
-         outputMeterValuedB.set(output_channel, output_channel < mainOutput.getNumChannels() ? juce::Decibels::gainToDecibels(mainOutput.getRMSLevel(output_channel, 0, buffer.getNumSamples())) : -144);
-     }
+    outputMeterValuedB.resize(mainOutput.getNumChannels()); // expand meter UI number
+    for (int output_channel = 0; output_channel < mainOutput.getNumChannels(); output_channel++)
+    {
+        outputMeterValuedB.set(output_channel, output_channel < mainOutput.getNumChannels() ? juce::Decibels::gainToDecibels(mainOutput.getRMSLevel(output_channel, 0, buffer.getNumSamples())) : -144);
+    }
 }
 
 void M1PannerAudioProcessor::timerCallback()
@@ -1244,6 +1307,17 @@ void M1PannerAudioProcessor::m1EncodeChangeInputOutputMode(Mach1EncodeInputMode 
             smoothedChannelCoeffs[in][out].setCurrentAndTargetValue(smoothedChannelCoeffs[in][out].getTargetValue());
         }
     }
+    
+    // Size headshadow smoothed coefficients for m1EncodeInverse
+    headshadowSmoothedChannelCoeffs = std::vector<std::vector<juce::LinearSmoothedValue<float>>>(inputChannelsCount, std::vector<juce::LinearSmoothedValue<float>>(outputChannelsCount));
+    for (int in = 0; in < inputChannelsCount; ++in)
+    {
+        for (int out = 0; out < outputChannelsCount; ++out)
+        {
+            headshadowSmoothedChannelCoeffs[in][out].setCurrentAndTargetValue(0.0f);
+        }
+    }
+    
     output_channel_indices.resize(outputChannelsCount);
 
     // Checks if output bus is non DISCRETE layout and fixes host specific channel ordering issues
@@ -1253,9 +1327,12 @@ void M1PannerAudioProcessor::m1EncodeChangeInputOutputMode(Mach1EncodeInputMode 
     {
         smoothedChannelCoeffs[input_channel] = std::vector<juce::LinearSmoothedValue<float>>();
         smoothedChannelCoeffs[input_channel].resize(outputChannelsCount);
+        headshadowSmoothedChannelCoeffs[input_channel] = std::vector<juce::LinearSmoothedValue<float>>();
+        headshadowSmoothedChannelCoeffs[input_channel].resize(outputChannelsCount);
         for (int output_channel = 0; output_channel < outputChannelsCount; output_channel++)
         {
             smoothedChannelCoeffs[input_channel][output_channel].reset(processorSampleRate, (double)0.01);
+            headshadowSmoothedChannelCoeffs[input_channel][output_channel].reset(processorSampleRate, (double)0.01);
         }
     }
 
@@ -1312,16 +1389,10 @@ void M1PannerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     addXmlElement(root, paramEqualPowerEncodeMode, juce::String(pannerSettings.equalpowerMode ? 1 : 0));
     addXmlElement(root, paramInputMode, juce::String(pannerSettings.m1Encode.getInputMode()));
     addXmlElement(root, paramOutputMode, juce::String(pannerSettings.m1Encode.getOutputMode()));
-#ifdef ITD_PARAMETERS
-    addXmlElement(root, paramITDActive, juce::String(pannerSettings.itdActive));
-    addXmlElement(root, paramDelayTime, juce::String(pannerSettings.delayTime));
-    addXmlElement(root, paramDelayDistance, juce::String(pannerSettings.delayDistance));
-#endif
     
     // ITD Headshadow parameters
     addXmlElement(root, paramHeadshadowActive, juce::String(pannerSettings.headshadowActive ? 1 : 0));
     addXmlElement(root, paramHeadshadowDelayTime, juce::String(pannerSettings.headshadowDelayTime));
-    addXmlElement(root, paramHeadshadowFeedback, juce::String(pannerSettings.headshadowFeedback));
     addXmlElement(root, paramHeadshadowWetGain, juce::String(pannerSettings.headshadowWetGain));
 
     // Extras
@@ -1366,16 +1437,9 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         parameterChanged(paramEqualPowerEncodeMode, (int)getParameterIntFromXmlElement(root.get(), paramEqualPowerEncodeMode, pannerSettings.equalpowerMode));
         parameterChanged(paramGainCompensationMode, (float)getParameterDoubleFromXmlElement(root.get(), paramGainCompensationMode, pannerSettings.gainCompensationMode));
 
-#ifdef ITD_PARAMETERS
-        parameterChanged(paramITDActive, (int)getParameterIntFromXmlElement(root.get(), paramITDActive, pannerSettings.itdActive));
-        parameterChanged(paramDelayTime, (int)getParameterIntFromXmlElement(root.get(), paramDelayTime, pannerSettings.delayTime));
-        parameterChanged(paramDelayDistance, (float)getParameterDoubleFromXmlElement(root.get(), paramDelayDistance, pannerSettings.delayDistance));
-#endif
-
         // ITD Headshadow parameters
         parameterChanged(paramHeadshadowActive, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowActive, pannerSettings.headshadowActive));
-        parameterChanged(paramHeadshadowDelayTime, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowDelayTime, pannerSettings.headshadowDelayTime));
-        parameterChanged(paramHeadshadowFeedback, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowFeedback, pannerSettings.headshadowFeedback));
+        parameterChanged(paramHeadshadowDelayTime, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowDelayTime, pannerSettings.headshadowDelayTime));
         parameterChanged(paramHeadshadowWetGain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowWetGain, pannerSettings.headshadowWetGain));
 
         // Extras
@@ -1404,16 +1468,9 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         params.getParameter(paramEqualPowerEncodeMode)->setValueNotifyingHost(params.getParameter(paramEqualPowerEncodeMode)->convertTo0to1(pannerSettings.equalpowerMode));
         params.getParameter(paramGainCompensationMode)->setValueNotifyingHost(params.getParameter(paramGainCompensationMode)->convertTo0to1(pannerSettings.gainCompensationMode));
 
-#ifdef ITD_PARAMETERS
-        params.getParameter(paramITDActive)->setValueNotifyingHost(params.getParameter(paramITDActive)->convertTo0to1(pannerSettings.itdActive));
-        params.getParameter(paramDelayTime)->setValueNotifyingHost(params.getParameter(paramDelayTime)->convertTo0to1(pannerSettings.delayTime));
-        params.getParameter(paramDelayDistance)->setValueNotifyingHost(params.getParameter(paramDelayDistance)->convertTo0to1(pannerSettings.delayDistance));
-#endif
-
         // ITD Headshadow parameters
         params.getParameter(paramHeadshadowActive)->setValueNotifyingHost(params.getParameter(paramHeadshadowActive)->convertTo0to1(pannerSettings.headshadowActive));
         params.getParameter(paramHeadshadowDelayTime)->setValueNotifyingHost(params.getParameter(paramHeadshadowDelayTime)->convertTo0to1(pannerSettings.headshadowDelayTime));
-        params.getParameter(paramHeadshadowFeedback)->setValueNotifyingHost(params.getParameter(paramHeadshadowFeedback)->convertTo0to1(pannerSettings.headshadowFeedback));
         params.getParameter(paramHeadshadowWetGain)->setValueNotifyingHost(params.getParameter(paramHeadshadowWetGain)->convertTo0to1(pannerSettings.headshadowWetGain));
     }
 }

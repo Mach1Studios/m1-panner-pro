@@ -40,7 +40,6 @@ else()
     message(STATUS "Warning: Did not find additional JUCE deps submodule. Please add the appropriate SDKs manually.")
 endif()
 
-option(ITD_PARAMETERS "Adds the experimental ITD processing parameters and UI" OFF)
 option(BUILD_VST3 "Compile VST3 plugin type" ON)
 option(BUILD_VST "Compile VST2 plugin type" OFF)
 option(BUILD_AAX "Compile AAX plugin type" OFF)
@@ -58,11 +57,6 @@ set(RBRACKET_LITERAL "}")
 set(PLUGIN_NAME "${CMAKE_PROJECT_NAME}")
 set(CUSTOM_BUNDLE_ID "com.mach1.spatial.panner")
 set(CUSTOM_PLUGIN_CODE "M1Pn")
-
-if(ITD_PARAMETERS)
-    add_definitions(-DITD_PARAMETERS)
-    message(STATUS "Compiling with experimental ITD parameters.")
-endif(ITD_PARAMETERS)
 
 # check which formats we want to build
 if(BUILD_AAX)

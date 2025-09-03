@@ -78,7 +78,6 @@ public:
 #endif
 
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-#ifdef ITD_PARAMETERS
     void writeToDelayBuffer(juce::AudioSampleBuffer& buffer,
         const int channelIn,
         const int channelOut,
@@ -94,7 +93,6 @@ public:
         float startGain,
         float endGain,
         bool replacing);
-#endif
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -137,18 +135,9 @@ public:
     static juce::String paramOutputMode;
 #endif
 
-#ifdef ITD_PARAMETERS
-    // Delay init
-    static juce::String paramITDActive;
-    static juce::String paramDelayTime;
-    static juce::String paramDelayDistance;
-    int mSliderDelayTime;
-#endif
-
     // ITD Headshadow parameters (Pro feature)
     static juce::String paramHeadshadowActive;
     static juce::String paramHeadshadowDelayTime;
-    static juce::String paramHeadshadowFeedback;
     static juce::String paramHeadshadowWetGain;
 
     // Variables from processor for UI
@@ -162,9 +151,10 @@ public:
     // ITD Headshadow processing (Pro feature)
     Mach1Encode<float> m1EncodeInverse;
     bool headshadowActive = false;
-    float headshadowDelayTime = 0.8f; // Default 0.8ms
-    float headshadowFeedback = 0.0f;  // Default no feedback
+    int headshadowDelayTime = 600; // Default 600 microseconds (0.6ms)
     float headshadowWetGain = 0.0f;   // Default no wet signal
+
+    // External components
     MixerSettings monitorSettings;
     HostTimelineData hostTimelineData;
     juce::PluginHostType hostType;
@@ -265,32 +255,15 @@ private:
     std::vector<std::vector<float>> audioDataIn;
     std::vector<std::vector<juce::LinearSmoothedValue<float>>> smoothedChannelCoeffs;
 
-#ifdef ITD_PARAMETERS
     inline void processBuffers(AudioSampleBuffer& buffer,
         std::vector<int> orderChans,
         std::vector<std::vector<float>> delayCoeffs);
-#else
-    inline void processBuffers(juce::AudioSampleBuffer& buffer,
-        std::vector<int> orderChans);
-#endif
-
-#ifdef ITD_PARAMETERS
-    // Delay init
-    juce::AudioSampleBuffer mDelayBuffer;
-    std::unique_ptr<RingBuffer> ring;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mDelayTimeSmoother; // smoothing for parameters
-    float mLastInputGain = 0.0f;
-    int mWritePos = 0;
-    int mExpectedReadPos = -1;
-    double mSampleRate = 0;
-#endif
 
     // ITD Headshadow delay processing
     std::unique_ptr<RingBuffer> headshadowDelayBuffer;
     std::vector<std::vector<float>> headshadowAudioDataIn; // Copied input signals for headshadow processing
     std::vector<std::vector<juce::LinearSmoothedValue<float>>> headshadowSmoothedChannelCoeffs; // For m1EncodeInverse
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowDelayTimeSmoother;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowFeedbackSmoother;
+    juce::SmoothedValue<int, juce::ValueSmoothingTypes::Linear> headshadowDelayTimeSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowWetGainSmoother;
 
     //==============================================================================
