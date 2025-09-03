@@ -17,6 +17,7 @@
 #include "M1VolumeDisplayLine.h"
 #include "PannerReticleField.h"
 #include "M1AlertComponent.h"
+#include "M1LicenseOverlay.h"
 #include "../AlertData.h"
 
 //==============================================================================
@@ -46,6 +47,7 @@ public:
 
     void showAlert(const std::string& title, const std::string& message, const std::string& buttonText = "OK");
     void postAlert(const Mach1::AlertData& alert); // Adds a new alert to the queue
+    void showLicenseOverlay(); // Shows the license management overlay
 
 private:
     juce::Point<int> cachedMousePositionWhenMouseWasHidden = { 0, 0 };
@@ -78,6 +80,16 @@ private:
     juce::OwnedArray<Mach1::AlertData> alertQueue; // queue for alerts
     Mach1::AlertData currentAlert;
     bool hasActiveAlert = false;
+
+    // License overlay system - similar to alert system
+    M1LicenseOverlay murkaLicenseOverlay;
+    bool hasActiveLicenseOverlay = false;
+    
+    // License overlay state (like AlertData for alerts)
+    struct LicenseOverlayData {
+        bool isActive = false;
+        ProductUnlockManager* productManager = nullptr;
+    } currentLicenseOverlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PannerUIBaseComponent)
 };

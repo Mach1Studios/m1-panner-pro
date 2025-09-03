@@ -37,6 +37,12 @@ juce::String M1PannerAudioProcessor::paramDelayTime("DelayTime");
 juce::String M1PannerAudioProcessor::paramDelayDistance("ITDDistance");
 #endif
 
+// ITD Headshadow parameters (Pro feature)
+juce::String M1PannerAudioProcessor::paramHeadshadowActive("HeadshadowActive");
+juce::String M1PannerAudioProcessor::paramHeadshadowDelayTime("HeadshadowDelayTime");
+juce::String M1PannerAudioProcessor::paramHeadshadowFeedback("HeadshadowFeedback");
+juce::String M1PannerAudioProcessor::paramHeadshadowWetGain("HeadshadowWetGain");
+
 //==============================================================================
 M1PannerAudioProcessor::M1PannerAudioProcessor()
     : AudioProcessor(getHostSpecificLayout()),
@@ -62,6 +68,11 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramDelayTime, 1), TRANS("Delay Time (max)"), juce::NormalisableRange<float>(0.0f, 10000.0f, 1.0f), pannerSettings.delayTime, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(1).getFloatValue(); }),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramDelayDistance, 1), TRANS("Delay Distance"), juce::NormalisableRange<float>(0.0f, 10000.0f, 0.01f), pannerSettings.delayDistance, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + ""; }, [](const juce::String& t) { return t.dropLastCharacters(1).getFloatValue(); }),
 #endif
+          // ITD Headshadow parameters (Pro feature)
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowActive, 1), TRANS("Headshadow Active"), pannerSettings.headshadowActive),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), juce::NormalisableRange<float>(0.4f, 2.0f, 0.01f), pannerSettings.headshadowDelayTime, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2) + "ms"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getFloatValue(); }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowFeedback, 1), TRANS("Headshadow Feedback"), juce::NormalisableRange<float>(0.0f, 0.95f, 0.01f), pannerSettings.headshadowFeedback, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }, [](const juce::String& t) { return t.getFloatValue(); }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowWetGain, 1), TRANS("Headshadow Wet Gain"), juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), pannerSettings.headshadowWetGain, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }, [](const juce::String& t) { return t.dropLastCharacters(3).getFloatValue(); }),
                                                                       })
 {
     parameters.addParameterListener(paramAzimuth, this);
@@ -84,6 +95,12 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
     parameters.addParameterListener(paramDelayTime, this);
     parameters.addParameterListener(paramDelayDistance, this);
 #endif
+    
+    // ITD Headshadow parameter listeners
+    parameters.addParameterListener(paramHeadshadowActive, this);
+    parameters.addParameterListener(paramHeadshadowDelayTime, this);
+    parameters.addParameterListener(paramHeadshadowFeedback, this);
+    parameters.addParameterListener(paramHeadshadowWetGain, this);
 
     // Setup osc and listener
     pannerOSC = std::make_unique<PannerOSC>(this);
@@ -157,6 +174,46 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
         osc_colour.alpha = 255;
     }
 
+    // Initialize product unlock manager
+    productUnlockManager = std::make_unique<ProductUnlockManager>();
+    productUnlockManager->initialize();
+    
+    // Set global manager for FeatureGate access
+    extern void setGlobalProductManager(ProductUnlockManager* manager);
+    setGlobalProductManager(productUnlockManager.get());
+    
+    // Set up callbacks for license status changes
+    productUnlockManager->onFeatureLevelChanged = [this](ProductUnlockManager::FeatureLevel level)
+    {
+        // Post alert about license status change
+        Mach1::AlertData alert;
+        alert.title = "License Status Changed";
+        
+        switch (level)
+        {
+            case ProductUnlockManager::FeatureLevel::Trial:
+                alert.message = "Running in trial mode. Some features may be limited.";
+                break;
+            case ProductUnlockManager::FeatureLevel::Standard:
+                alert.message = "Standard license activated. Most features unlocked.";
+                break;
+            case ProductUnlockManager::FeatureLevel::Pro:
+                alert.message = "Pro license activated. All features unlocked.";
+                break;
+        }
+        
+        alert.buttonText = "OK";
+        postAlert(alert);
+        
+        // Update host display to reflect new capabilities
+        updateHostDisplay();
+    };
+    
+    productUnlockManager->onStatusMessageChanged = [this](const juce::String& message)
+    {
+        DBG("[LICENSE] " + message);
+    };
+
     // pannerOSC update timer loop
     startTimer(200);
 
@@ -168,6 +225,10 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
 
 M1PannerAudioProcessor::~M1PannerAudioProcessor()
 {
+    // Clear global manager reference
+    extern void setGlobalProductManager(ProductUnlockManager* manager);
+    setGlobalProductManager(nullptr);
+    
     pannerSettings.state = -1;
     stopTimer();
 }
@@ -391,6 +452,18 @@ void M1PannerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     mExpectedReadPos = -1;
 #endif
 
+    // Initialize headshadow delay buffer (Pro feature)
+    headshadowDelayBuffer.reset(new RingBuffer(pannerSettings.m1Encode.getOutputChannelsCount(), 64 * sampleRate));
+    headshadowDelayBuffer->clear();
+    
+    // Initialize headshadow smoothers
+    headshadowDelayTimeSmoother.reset(samplesPerBlock);
+    headshadowDelayTimeSmoother.setValue(pannerSettings.headshadowDelayTime);
+    headshadowFeedbackSmoother.reset(samplesPerBlock);
+    headshadowFeedbackSmoother.setValue(pannerSettings.headshadowFeedback);
+    headshadowWetGainSmoother.reset(samplesPerBlock);
+    headshadowWetGainSmoother.setValue(pannerSettings.headshadowWetGain);
+
     // Initialize OSC if not already done
     if (!pannerOSC) {
         pannerOSC = std::make_unique<PannerOSC>(this);
@@ -524,8 +597,24 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
 #ifdef ITD_PARAMETERS
     else if (parameterID == paramITDActive)
     {
-        pannerSettings.itdActive = (bool)newValue;
-        parameters.getParameter(paramITDActive)->setValue((bool)newValue);
+        // Check if ITD processing is unlocked
+        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing))
+        {
+            pannerSettings.itdActive = (bool)newValue;
+            parameters.getParameter(paramITDActive)->setValue((bool)newValue);
+        }
+        else
+        {
+            // Feature is locked, reset to false and show alert
+            parameters.getParameter(paramITDActive)->setValue(false);
+            pannerSettings.itdActive = false;
+            
+            Mach1::AlertData alert;
+            alert.title = "Feature Locked";
+            alert.message = "ITD Processing requires a Pro license. This feature provides advanced inter-aural time delay processing for enhanced spatial audio.";
+            alert.buttonText = "Learn More";
+            postAlert(alert);
+        }
     }
     else if (parameterID == paramDelayTime)
     {
@@ -542,6 +631,47 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
     {
         pannerSettings.lockOutputLayout = (bool)newValue;
         lockOutputLayout = (bool)newValue;
+    }
+    else if (parameterID == paramHeadshadowActive)
+    {
+        // Check if Headshadow processing is unlocked (Pro feature)
+        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing)) // Using ITD feature gate for now
+        {
+            pannerSettings.headshadowActive = (bool)newValue;
+            headshadowActive = (bool)newValue;
+            parameters.getParameter(paramHeadshadowActive)->setValue((bool)newValue);
+        }
+        else
+        {
+            // Feature is locked, reset to false and show alert
+            parameters.getParameter(paramHeadshadowActive)->setValue(false);
+            pannerSettings.headshadowActive = false;
+            headshadowActive = false;
+            
+            Mach1::AlertData alert;
+            alert.title = "Feature Locked";
+            alert.message = "Headshadow Processing requires a Pro license. This feature provides advanced spatial audio processing with inverse encoding.";
+            alert.buttonText = "Learn More";
+            postAlert(alert);
+        }
+    }
+    else if (parameterID == paramHeadshadowDelayTime)
+    {
+        pannerSettings.headshadowDelayTime = newValue;
+        headshadowDelayTime = newValue;
+        parameters.getParameter(paramHeadshadowDelayTime)->setValue(newValue);
+    }
+    else if (parameterID == paramHeadshadowFeedback)
+    {
+        pannerSettings.headshadowFeedback = newValue;
+        headshadowFeedback = newValue;
+        parameters.getParameter(paramHeadshadowFeedback)->setValue(newValue);
+    }
+    else if (parameterID == paramHeadshadowWetGain)
+    {
+        pannerSettings.headshadowWetGain = newValue;
+        headshadowWetGain = newValue;
+        parameters.getParameter(paramHeadshadowWetGain)->setValue(newValue);
     }
     // send a pannersettings update to helper since a parameter changed
     try {
@@ -1187,6 +1317,12 @@ void M1PannerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     addXmlElement(root, paramDelayTime, juce::String(pannerSettings.delayTime));
     addXmlElement(root, paramDelayDistance, juce::String(pannerSettings.delayDistance));
 #endif
+    
+    // ITD Headshadow parameters
+    addXmlElement(root, paramHeadshadowActive, juce::String(pannerSettings.headshadowActive ? 1 : 0));
+    addXmlElement(root, paramHeadshadowDelayTime, juce::String(pannerSettings.headshadowDelayTime));
+    addXmlElement(root, paramHeadshadowFeedback, juce::String(pannerSettings.headshadowFeedback));
+    addXmlElement(root, paramHeadshadowWetGain, juce::String(pannerSettings.headshadowWetGain));
 
     // Extras
     addXmlElement(root, "trackColor_r", juce::String(osc_colour.red));
@@ -1236,6 +1372,12 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         parameterChanged(paramDelayDistance, (float)getParameterDoubleFromXmlElement(root.get(), paramDelayDistance, pannerSettings.delayDistance));
 #endif
 
+        // ITD Headshadow parameters
+        parameterChanged(paramHeadshadowActive, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowActive, pannerSettings.headshadowActive));
+        parameterChanged(paramHeadshadowDelayTime, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowDelayTime, pannerSettings.headshadowDelayTime));
+        parameterChanged(paramHeadshadowFeedback, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowFeedback, pannerSettings.headshadowFeedback));
+        parameterChanged(paramHeadshadowWetGain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowWetGain, pannerSettings.headshadowWetGain));
+
         // Extras
         osc_colour.red = (int)getParameterIntFromXmlElement(root.get(), "trackColor_r", osc_colour.red);
         osc_colour.green = (int)getParameterIntFromXmlElement(root.get(), "trackColor_g", osc_colour.green);
@@ -1267,6 +1409,12 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         params.getParameter(paramDelayTime)->setValueNotifyingHost(params.getParameter(paramDelayTime)->convertTo0to1(pannerSettings.delayTime));
         params.getParameter(paramDelayDistance)->setValueNotifyingHost(params.getParameter(paramDelayDistance)->convertTo0to1(pannerSettings.delayDistance));
 #endif
+
+        // ITD Headshadow parameters
+        params.getParameter(paramHeadshadowActive)->setValueNotifyingHost(params.getParameter(paramHeadshadowActive)->convertTo0to1(pannerSettings.headshadowActive));
+        params.getParameter(paramHeadshadowDelayTime)->setValueNotifyingHost(params.getParameter(paramHeadshadowDelayTime)->convertTo0to1(pannerSettings.headshadowDelayTime));
+        params.getParameter(paramHeadshadowFeedback)->setValueNotifyingHost(params.getParameter(paramHeadshadowFeedback)->convertTo0to1(pannerSettings.headshadowFeedback));
+        params.getParameter(paramHeadshadowWetGain)->setValueNotifyingHost(params.getParameter(paramHeadshadowWetGain)->convertTo0to1(pannerSettings.headshadowWetGain));
     }
 }
 
@@ -1285,4 +1433,11 @@ void M1PannerAudioProcessor::postAlert(const Mach1::AlertData& alert)
         pendingAlerts.push_back(alert); // Store for later
         DBG("Stored alert for UI. Total pending: " + juce::String(pendingAlerts.size()));
     }
+}
+
+bool M1PannerAudioProcessor::isFeatureUnlocked(ProductUnlockManager::UnlockableFeature feature) const
+{
+    if (productUnlockManager)
+        return productUnlockManager->isFeatureUnlocked(feature);
+    return false; // Locked by default if no manager
 }

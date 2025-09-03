@@ -196,12 +196,14 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
     juce::juce_audio_utils
     juce::juce_core
     juce::juce_data_structures
+    juce::juce_dsp
     juce::juce_events
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
     juce::juce_opengl
     juce::juce_osc
+    juce::juce_product_unlocking
     juce_murka
     )
 target_link_libraries(${PLUGIN_NAME} PRIVATE Resources PUBLIC juce::juce_recommended_warning_flags juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)

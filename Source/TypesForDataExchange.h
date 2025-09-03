@@ -49,6 +49,12 @@ struct PannerSettings
     int delayTime = 600;
     float delayDistance = 1.0;
 #endif
+
+    // ITD Headshadow parameters (Pro feature)
+    bool headshadowActive = false;
+    float headshadowDelayTime = 0.8f; // 0.4ms to 2ms range
+    float headshadowFeedback = 0.0f;  // 0 to 0.95 range
+    float headshadowWetGain = 0.0f;   // -60dB to +6dB range
 };
 
 struct MixerSettings

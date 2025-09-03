@@ -25,6 +25,9 @@ PannerUIBaseComponent::PannerUIBaseComponent(M1PannerAudioProcessor* processor_)
     processor->postAlertToUI = [this](const Mach1::AlertData& alert) {
         this->postAlert(alert);
     };
+
+    // Initialize license overlay data (similar to alert system)
+    currentLicenseOverlay.productManager = processor->getProductUnlockManager();
 }
 
 PannerUIBaseComponent::~PannerUIBaseComponent()
@@ -1221,20 +1224,39 @@ void PannerUIBaseComponent::draw()
     m.setColor(200, 255);
 #ifdef CUSTOM_CHANNEL_LAYOUT
     m.drawImage(m1logo, 20, m.getSize().height() - 30, 161 / 3, 39 / 3);
+    
+    // Invisible button over M1 logo for license overlay
+    float logoX = 20;
+    float logoY = m.getSize().height() - 30;
+    float logoWidth = 161 / 3;
+    float logoHeight = 39 / 3;
 #else
+    float logoX, logoY, logoWidth = 161 / 3, logoHeight = 39 / 3;
+    
     if (!processor->hostType.isProTools() || // not pro tools
         ((processor->hostType.isProTools() && // or is pro tools and is input 4 or 6
              (processor->getMainBusNumInputChannels() == 4 || processor->getMainBusNumInputChannels() == 6))
             || // or is pro tools and has a higher order output configuration
             (processor->getMainBusNumOutputChannels() >= 8)))
     {
-        m.drawImage(m1logo, 25, m.getSize().height() - labelYOffset, 161 / 3, 39 / 3);
+        logoX = 25;
+        logoY = m.getSize().height() - labelYOffset;
+        m.drawImage(m1logo, logoX, logoY, logoWidth, logoHeight);
     }
     else
     {
-        m.drawImage(m1logo, 25, m.getSize().height() - 30, 161 / 3, 39 / 3);
+        logoX = 25;
+        logoY = m.getSize().height() - 30;
+        m.drawImage(m1logo, logoX, logoY, logoWidth, logoHeight);
     }
 #endif
+
+    // Invisible button over M1 logo for license overlay
+    if (currentMousePosition.x >= logoX && currentMousePosition.x <= logoX + logoWidth &&
+        currentMousePosition.y >= logoY && currentMousePosition.y <= logoY + logoHeight)
+    {
+        showLicenseOverlay();
+    }
 
     // update the panner state if a user is interacting with the UI
     if (azLabel.highlighted || dLabel.highlighted || zLabel.highlighted || xLabel.highlighted || yLabel.highlighted || srLabel.highlighted || ssLabel.highlighted || spLabel.highlighted || gLabel.highlighted)
@@ -1260,6 +1282,21 @@ void PannerUIBaseComponent::draw()
             hasActiveAlert = false;
         };
         alertModal.draw();
+    }
+
+    // Draw the license overlay if active (construct fresh like alert modal)
+    if (hasActiveLicenseOverlay)
+    {
+        auto& licenseModal = m.prepare<M1LicenseOverlay>(MurkaShape(0, 0, m.getSize().width(), m.getSize().height()));
+        licenseModal.overlayActive = currentLicenseOverlay.isActive;
+        licenseModal.productUnlockManager = currentLicenseOverlay.productManager;
+        licenseModal.onDismiss = [this]()
+        {
+            currentLicenseOverlay.isActive = false;
+            hasActiveLicenseOverlay = false;
+        };
+        licenseModal.update(); // Handle success timer
+        licenseModal.draw();
     }
 
     // *** GESTURE CLEANUP - Safety net for orphaned gestures ***
@@ -1361,4 +1398,10 @@ void PannerUIBaseComponent::postAlert(const Mach1::AlertData& alert)
     murkaAlert.alert.message = currentAlert.message;
     murkaAlert.alert.buttonText = currentAlert.buttonText;
     hasActiveAlert = true;
+}
+
+void PannerUIBaseComponent::showLicenseOverlay()
+{
+    currentLicenseOverlay.isActive = true;
+    hasActiveLicenseOverlay = true;
 }

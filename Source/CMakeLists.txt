@@ -9,6 +9,8 @@ target_sources(${PLUGIN_NAME} PRIVATE    Config.h
                                     Overlay.cpp
                                     PannerOSC.h
                                     PannerOSC.cpp
+                                    ProductUnlockManager.h
+                                    ProductUnlockManager.cpp
                                     RingBuffer.h
                                     WindowUtil.h
                                     WindowUtil.cpp
@@ -24,6 +26,7 @@ target_sources(${PLUGIN_NAME} PRIVATE    Config.h
                                     UI/OverlayUIBaseComponent.cpp
                                     UI/PannerReticleField.h
                                     UI/M1AlertComponent.h
+                                    UI/M1LicenseOverlay.h
                                     UI/PannerUIBaseComponent.h
                                     UI/PannerUIBaseComponent.cpp)
 

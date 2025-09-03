@@ -7,10 +7,8 @@
 #include "AlertData.h"
 #include "PannerOSC.h"
 #include "TypesForDataExchange.h"
-
-#ifdef ITD_PARAMETERS
-    #include "RingBuffer.h"
-#endif
+#include "ProductUnlockManager.h"
+#include "RingBuffer.h"
 
 //==============================================================================
 /**
@@ -147,6 +145,12 @@ public:
     int mSliderDelayTime;
 #endif
 
+    // ITD Headshadow parameters (Pro feature)
+    static juce::String paramHeadshadowActive;
+    static juce::String paramHeadshadowDelayTime;
+    static juce::String paramHeadshadowFeedback;
+    static juce::String paramHeadshadowWetGain;
+
     // Variables from processor for UI
     juce::Array<float> outputMeterValuedB;
 
@@ -154,6 +158,13 @@ public:
     void m1EncodeChangeInputOutputMode(Mach1EncodeInputMode inputMode, Mach1EncodeOutputMode outputMode);
     PannerSettings pannerSettings;
     float gain_comp_in_db = 0;
+    
+    // ITD Headshadow processing (Pro feature)
+    Mach1Encode<float> m1EncodeInverse;
+    bool headshadowActive = false;
+    float headshadowDelayTime = 0.8f; // Default 0.8ms
+    float headshadowFeedback = 0.0f;  // Default no feedback
+    float headshadowWetGain = 0.0f;   // Default no wet signal
     MixerSettings monitorSettings;
     HostTimelineData hostTimelineData;
     juce::PluginHostType hostType;
@@ -238,6 +249,11 @@ public:
     float lastUISetDiverge = 0.0f;
     static constexpr float PARAMETER_TOLERANCE = 0.1f;  // Tolerance for parameter comparison
 
+    // Product unlocking and licensing
+    std::unique_ptr<ProductUnlockManager> productUnlockManager;
+    ProductUnlockManager* getProductUnlockManager() const { return productUnlockManager.get(); }
+    bool isFeatureUnlocked(ProductUnlockManager::UnlockableFeature feature) const;
+
 private:
     TrackProperties track_properties;
     void createLayout();
@@ -268,6 +284,14 @@ private:
     int mExpectedReadPos = -1;
     double mSampleRate = 0;
 #endif
+
+    // ITD Headshadow delay processing
+    std::unique_ptr<RingBuffer> headshadowDelayBuffer;
+    std::vector<std::vector<float>> headshadowAudioDataIn; // Copied input signals for headshadow processing
+    std::vector<std::vector<juce::LinearSmoothedValue<float>>> headshadowSmoothedChannelCoeffs; // For m1EncodeInverse
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowDelayTimeSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowFeedbackSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowWetGainSmoother;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(M1PannerAudioProcessor)
