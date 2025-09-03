@@ -1106,19 +1106,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     {
         // Get headshadow coefficients from m1EncodeInverse
         auto headshadowGainCoeffs = m1EncodeInverse.getGains();
-        
-        // Debug: Print headshadow info once per buffer
-        static int debugCounter = 0;
-        if (debugCounter++ % 100 == 0) // Every ~2 seconds at 44.1kHz
-        {
-            DBG("=== HEADSHADOW DEBUG ===");
-            DBG("Active: True, DelayTime: " + juce::String(headshadowDelayTime) + "μs, WetGain: " + juce::String(headshadowWetGain) + "dB");
-            DBG("Main buf channels: " + juce::String(buf.getNumChannels()) + ", Headshadow buf channels: " + juce::String(headshadow_buf.getNumChannels()));
-            DBG("HeadshadowAudioDataIn size: " + juce::String(headshadowAudioDataIn.size()));
-            DBG("GainCoeffs size: " + juce::String(headshadowGainCoeffs.size()) + "x" + 
-                (headshadowGainCoeffs.size() > 0 ? juce::String(headshadowGainCoeffs[0].size()) : juce::String("0")));
-        }
-        
+
         // Scale headshadow coeffs to be normalized (like old delayCoeffs logic)
         std::vector<std::vector<float>> delayCoeffs(pannerSettings.m1Encode.getInputChannelsCount(), 
                                                    std::vector<float>(pannerSettings.m1Encode.getOutputChannelsCount(), 0.0f));
