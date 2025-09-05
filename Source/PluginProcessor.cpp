@@ -59,7 +59,7 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
 #endif
           // ITD Headshadow parameters (Pro feature)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowActive, 1), TRANS("Headshadow Active"), pannerSettings.headshadowActive),
-          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 0, 10000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 200, 10000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowWetGain, 1), TRANS("Headshadow Wet Gain"), juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), pannerSettings.headshadowWetGain, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }, [](const juce::String& t) { return t.dropLastCharacters(3).getFloatValue(); }),
                                                                       })
 {
