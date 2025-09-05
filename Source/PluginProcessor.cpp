@@ -37,6 +37,43 @@ juce::String M1PannerAudioProcessor::paramHeadshadowActive("HeadshadowActive");
 juce::String M1PannerAudioProcessor::paramHeadshadowDelayTime("HeadshadowDelayTime");
 juce::String M1PannerAudioProcessor::paramHeadshadowWetGain("HeadshadowWetGain");
 
+// Headshadow EQ parameters (6 bands)
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand1Freq("HeadshadowEQBand1Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand1Gain("HeadshadowEQBand1Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand1Q("HeadshadowEQBand1Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand1Type("HeadshadowEQBand1Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand1Enabled("HeadshadowEQBand1Enabled");
+
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand2Freq("HeadshadowEQBand2Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand2Gain("HeadshadowEQBand2Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand2Q("HeadshadowEQBand2Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand2Type("HeadshadowEQBand2Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand2Enabled("HeadshadowEQBand2Enabled");
+
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand3Freq("HeadshadowEQBand3Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand3Gain("HeadshadowEQBand3Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand3Q("HeadshadowEQBand3Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand3Type("HeadshadowEQBand3Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand3Enabled("HeadshadowEQBand3Enabled");
+
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand4Freq("HeadshadowEQBand4Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand4Gain("HeadshadowEQBand4Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand4Q("HeadshadowEQBand4Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand4Type("HeadshadowEQBand4Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand4Enabled("HeadshadowEQBand4Enabled");
+
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand5Freq("HeadshadowEQBand5Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand5Gain("HeadshadowEQBand5Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand5Q("HeadshadowEQBand5Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand5Type("HeadshadowEQBand5Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand5Enabled("HeadshadowEQBand5Enabled");
+
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand6Freq("HeadshadowEQBand6Freq");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand6Gain("HeadshadowEQBand6Gain");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand6Q("HeadshadowEQBand6Q");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand6Type("HeadshadowEQBand6Type");
+juce::String M1PannerAudioProcessor::paramHeadshadowEQBand6Enabled("HeadshadowEQBand6Enabled");
+
 //==============================================================================
 M1PannerAudioProcessor::M1PannerAudioProcessor()
     : AudioProcessor(getHostSpecificLayout()),
@@ -61,6 +98,48 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowActive, 1), TRANS("Headshadow Active"), pannerSettings.headshadowActive),
           std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 200, 10000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowWetGain, 1), TRANS("Headshadow Wet Gain"), juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), pannerSettings.headshadowWetGain, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }, [](const juce::String& t) { return t.dropLastCharacters(3).getFloatValue(); }),
+          
+          // Headshadow EQ Band 1 (HPF)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand1Freq, 1), TRANS("HS EQ Band1 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 80.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand1Gain, 1), TRANS("HS EQ Band1 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand1Q, 1), TRANS("HS EQ Band1 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 0.707f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand1Type, 1), TRANS("HS EQ Band1 Type"), 0, 5, 1), // HighPass
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand1Enabled, 1), TRANS("HS EQ Band1 On"), false),
+          
+          // Headshadow EQ Band 2 (Low Shelf)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand2Freq, 1), TRANS("HS EQ Band2 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 200.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand2Gain, 1), TRANS("HS EQ Band2 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand2Q, 1), TRANS("HS EQ Band2 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 0.707f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand2Type, 1), TRANS("HS EQ Band2 Type"), 0, 5, 2), // LowShelf
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand2Enabled, 1), TRANS("HS EQ Band2 On"), false),
+          
+          // Headshadow EQ Band 3 (Low Mid Peak)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand3Freq, 1), TRANS("HS EQ Band3 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 800.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand3Gain, 1), TRANS("HS EQ Band3 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand3Q, 1), TRANS("HS EQ Band3 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 1.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand3Type, 1), TRANS("HS EQ Band3 Type"), 0, 5, 3), // Peak
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand3Enabled, 1), TRANS("HS EQ Band3 On"), false),
+          
+          // Headshadow EQ Band 4 (High Mid Peak)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand4Freq, 1), TRANS("HS EQ Band4 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 3200.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand4Gain, 1), TRANS("HS EQ Band4 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand4Q, 1), TRANS("HS EQ Band4 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 1.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand4Type, 1), TRANS("HS EQ Band4 Type"), 0, 5, 3), // Peak
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand4Enabled, 1), TRANS("HS EQ Band4 On"), false),
+          
+          // Headshadow EQ Band 5 (High Shelf)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand5Freq, 1), TRANS("HS EQ Band5 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 8000.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand5Gain, 1), TRANS("HS EQ Band5 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand5Q, 1), TRANS("HS EQ Band5 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 0.707f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand5Type, 1), TRANS("HS EQ Band5 Type"), 0, 5, 4), // HighShelf
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand5Enabled, 1), TRANS("HS EQ Band5 On"), false),
+          
+          // Headshadow EQ Band 6 (LPF)
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand6Freq, 1), TRANS("HS EQ Band6 Freq"), juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 12000.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 0) + " Hz"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand6Gain, 1), TRANS("HS EQ Band6 Gain"), juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }),
+          std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowEQBand6Q, 1), TRANS("HS EQ Band6 Q"), juce::NormalisableRange<float>(0.1f, 10.0f, 0.01f, 0.3f), 0.707f, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 2); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowEQBand6Type, 1), TRANS("HS EQ Band6 Type"), 0, 5, 5), // LowPass
+          std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowEQBand6Enabled, 1), TRANS("HS EQ Band6 On"), false),
                                                                       })
 {
     parameters.addParameterListener(paramAzimuth, this);
@@ -83,6 +162,43 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
     parameters.addParameterListener(paramHeadshadowActive, this);
     parameters.addParameterListener(paramHeadshadowDelayTime, this);
     parameters.addParameterListener(paramHeadshadowWetGain, this);
+    
+    // Add EQ parameter listeners
+    parameters.addParameterListener(paramHeadshadowEQBand1Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand1Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand1Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand1Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand1Enabled, this);
+    
+    parameters.addParameterListener(paramHeadshadowEQBand2Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand2Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand2Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand2Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand2Enabled, this);
+    
+    parameters.addParameterListener(paramHeadshadowEQBand3Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand3Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand3Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand3Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand3Enabled, this);
+    
+    parameters.addParameterListener(paramHeadshadowEQBand4Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand4Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand4Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand4Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand4Enabled, this);
+    
+    parameters.addParameterListener(paramHeadshadowEQBand5Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand5Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand5Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand5Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand5Enabled, this);
+    
+    parameters.addParameterListener(paramHeadshadowEQBand6Freq, this);
+    parameters.addParameterListener(paramHeadshadowEQBand6Gain, this);
+    parameters.addParameterListener(paramHeadshadowEQBand6Q, this);
+    parameters.addParameterListener(paramHeadshadowEQBand6Type, this);
+    parameters.addParameterListener(paramHeadshadowEQBand6Enabled, this);
 
     // Setup osc and listener
     pannerOSC = std::make_unique<PannerOSC>(this);
@@ -429,6 +545,16 @@ void M1PannerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     headshadowDelayTimeSmoother.setCurrentAndTargetValue(pannerSettings.headshadowDelayTime);
     headshadowWetGainSmoother.reset(sampleRate, 0.05);
     headshadowWetGainSmoother.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(pannerSettings.headshadowWetGain));
+    
+    // Initialize headshadow EQ
+    juce::dsp::ProcessSpec eqSpec;
+    eqSpec.sampleRate = sampleRate;
+    eqSpec.maximumBlockSize = samplesPerBlock;
+    eqSpec.numChannels = 1; // Process per channel
+    headshadowEQ.prepare(eqSpec);
+    
+    // Initialize headshadow processing
+    reinitializeHeadshadowProcessing();
 
     // Initialize OSC if not already done
     if (!pannerOSC) {
@@ -447,6 +573,43 @@ void M1PannerAudioProcessor::releaseResources()
 {
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
+}
+
+void M1PannerAudioProcessor::reinitializeHeadshadowProcessing()
+{
+    int inputChannels = pannerSettings.m1Encode.getInputChannelsCount();
+    int outputChannels = pannerSettings.m1Encode.getOutputChannelsCount();
+    
+    DBG("Reinitializing headshadow processing - Input channels: " + juce::String(inputChannels) + ", Output channels: " + juce::String(outputChannels));
+    
+    // Reinitialize headshadow delay buffer with new channel count
+    if (processorSampleRate > 0)
+    {
+        headshadowDelayBuffer.reset(new RingBuffer(outputChannels, 64 * processorSampleRate));
+        headshadowDelayBuffer->clear();
+    }
+    
+    // Resize headshadow audio data arrays
+    headshadowAudioDataIn.clear();
+    headshadowAudioDataIn.resize(inputChannels);
+    for (auto& channelData : headshadowAudioDataIn)
+    {
+        channelData.clear();
+        channelData.reserve(8192); // Reserve space for typical buffer sizes
+    }
+    
+    // Resize headshadow smoothed coefficients
+    headshadowSmoothedChannelCoeffs.clear();
+    headshadowSmoothedChannelCoeffs.resize(inputChannels);
+    for (auto& inputChannel : headshadowSmoothedChannelCoeffs)
+    {
+        inputChannel.resize(outputChannels);
+        for (auto& smoother : inputChannel)
+        {
+            smoother.reset(processorSampleRate, 0.05); // 50ms smoothing
+            smoother.setCurrentAndTargetValue(0.0f);
+        }
+    }
 }
 
 void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
@@ -539,8 +702,11 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
         {
             Mach1EncodeInputMode inputType = Mach1EncodeInputMode((int)newValue);
             pannerSettings.m1Encode.setInputMode(inputType);
+            m1EncodeInverse.setInputMode(inputType);
             parameters.getParameter(paramInputMode)->setValue(parameters.getParameter(paramInputMode)->convertTo0to1(newValue));
             layoutCreated = false;
+            // Reinitialize headshadow processing due to input channel count change
+            reinitializeHeadshadowProcessing();
         }
     }
     else if (parameterID == paramOutputMode)
@@ -550,9 +716,12 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
         {
             Mach1EncodeOutputMode outputType = Mach1EncodeOutputMode((int)newValue);
             pannerSettings.m1Encode.setOutputMode(outputType);
+            m1EncodeInverse.setOutputMode(outputType);
             gain_comp_in_db = pannerSettings.m1Encode.getGainCompensation(true); // store new gain compensation
             parameters.getParameter(paramOutputMode)->setValue(parameters.getParameter(paramOutputMode)->convertTo0to1(newValue));
             layoutCreated = false;
+            // Reinitialize headshadow processing due to output channel count change
+            reinitializeHeadshadowProcessing();
         }
     }
     else if (parameterID == paramGainCompensationMode)
@@ -599,6 +768,137 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
         pannerSettings.headshadowWetGain = newValue;
         headshadowWetGain = newValue;
         parameters.getParameter(paramHeadshadowWetGain)->setValue(newValue);
+    }
+    // EQ Band 1 parameters
+    else if (parameterID == paramHeadshadowEQBand1Freq)
+    {
+        headshadowEQ.setBandFrequency(0, newValue);
+        DBG("EQ Band 1 Freq changed to: " + juce::String(newValue) + " Hz");
+    }
+    else if (parameterID == paramHeadshadowEQBand1Gain)
+    {
+        headshadowEQ.setBandGain(0, newValue);
+        DBG("EQ Band 1 Gain changed to: " + juce::String(newValue) + " dB");
+    }
+    else if (parameterID == paramHeadshadowEQBand1Q)
+    {
+        headshadowEQ.setBandQ(0, newValue);
+        DBG("EQ Band 1 Q changed to: " + juce::String(newValue));
+    }
+    else if (parameterID == paramHeadshadowEQBand1Type)
+    {
+        headshadowEQ.setBandType(0, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+        DBG("EQ Band 1 Type changed to: " + juce::String(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand1Enabled)
+    {
+        headshadowEQ.setBandEnabled(0, newValue > 0.5f);
+        DBG("EQ Band 1 Enabled: " + juce::String(newValue > 0.5f ? "true" : "false"));
+    }
+    // EQ Band 2 parameters
+    else if (parameterID == paramHeadshadowEQBand2Freq)
+    {
+        headshadowEQ.setBandFrequency(1, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand2Gain)
+    {
+        headshadowEQ.setBandGain(1, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand2Q)
+    {
+        headshadowEQ.setBandQ(1, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand2Type)
+    {
+        headshadowEQ.setBandType(1, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand2Enabled)
+    {
+        headshadowEQ.setBandEnabled(1, newValue > 0.5f);
+    }
+    // EQ Band 3 parameters
+    else if (parameterID == paramHeadshadowEQBand3Freq)
+    {
+        headshadowEQ.setBandFrequency(2, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand3Gain)
+    {
+        headshadowEQ.setBandGain(2, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand3Q)
+    {
+        headshadowEQ.setBandQ(2, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand3Type)
+    {
+        headshadowEQ.setBandType(2, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand3Enabled)
+    {
+        headshadowEQ.setBandEnabled(2, newValue > 0.5f);
+    }
+    // EQ Band 4 parameters
+    else if (parameterID == paramHeadshadowEQBand4Freq)
+    {
+        headshadowEQ.setBandFrequency(3, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand4Gain)
+    {
+        headshadowEQ.setBandGain(3, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand4Q)
+    {
+        headshadowEQ.setBandQ(3, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand4Type)
+    {
+        headshadowEQ.setBandType(3, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand4Enabled)
+    {
+        headshadowEQ.setBandEnabled(3, newValue > 0.5f);
+    }
+    // EQ Band 5 parameters
+    else if (parameterID == paramHeadshadowEQBand5Freq)
+    {
+        headshadowEQ.setBandFrequency(4, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand5Gain)
+    {
+        headshadowEQ.setBandGain(4, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand5Q)
+    {
+        headshadowEQ.setBandQ(4, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand5Type)
+    {
+        headshadowEQ.setBandType(4, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand5Enabled)
+    {
+        headshadowEQ.setBandEnabled(4, newValue > 0.5f);
+    }
+    // EQ Band 6 parameters
+    else if (parameterID == paramHeadshadowEQBand6Freq)
+    {
+        headshadowEQ.setBandFrequency(5, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand6Gain)
+    {
+        headshadowEQ.setBandGain(5, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand6Q)
+    {
+        headshadowEQ.setBandQ(5, newValue);
+    }
+    else if (parameterID == paramHeadshadowEQBand6Type)
+    {
+        headshadowEQ.setBandType(5, static_cast<MultibandEQ::FilterType>(static_cast<int>(newValue)));
+    }
+    else if (parameterID == paramHeadshadowEQBand6Enabled)
+    {
+        headshadowEQ.setBandEnabled(5, newValue > 0.5f);
     }
     // send a pannersettings update to helper since a parameter changed
     try {
@@ -1101,7 +1401,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    // HEADSHADOW DELAY PROCESSING (based on old ITD logic)
+    // HEADSHADOW DELAY PROCESSING
     if (headshadowActive)
     {
         // Get headshadow coefficients from m1EncodeInverse
@@ -1143,10 +1443,12 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     // Write original to delay buffer for future samples
                     headshadowDelayBuffer->pushSample(channel, originalSample);
                     
-                    // Apply pan-law like old logic (original * pan-law + delayed * pan-law)
+                    // Apply pan-law (original * pan-law + delayed * pan-law)
                     float processedSample = (originalSample * 0.707106781f) + (delayedSample * 0.707106781f);
                     
-                    headshadow_buf.setSample(channel, sample, processedSample);
+                    // Apply EQ processing to the headshadow signal
+                    float eqProcessedSample = headshadowEQ.processSample(processedSample);
+                    headshadow_buf.setSample(channel, sample, eqProcessedSample);
                 }
             }
             

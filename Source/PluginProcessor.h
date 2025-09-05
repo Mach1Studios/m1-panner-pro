@@ -9,6 +9,7 @@
 #include "TypesForDataExchange.h"
 #include "ProductUnlockManager.h"
 #include "RingBuffer.h"
+#include "MultibandEQ.h"
 
 //==============================================================================
 /**
@@ -139,6 +140,43 @@ public:
     static juce::String paramHeadshadowActive;
     static juce::String paramHeadshadowDelayTime;
     static juce::String paramHeadshadowWetGain;
+    
+    // Headshadow EQ parameters (6 bands)
+    static juce::String paramHeadshadowEQBand1Freq;
+    static juce::String paramHeadshadowEQBand1Gain;
+    static juce::String paramHeadshadowEQBand1Q;
+    static juce::String paramHeadshadowEQBand1Type;
+    static juce::String paramHeadshadowEQBand1Enabled;
+    
+    static juce::String paramHeadshadowEQBand2Freq;
+    static juce::String paramHeadshadowEQBand2Gain;
+    static juce::String paramHeadshadowEQBand2Q;
+    static juce::String paramHeadshadowEQBand2Type;
+    static juce::String paramHeadshadowEQBand2Enabled;
+    
+    static juce::String paramHeadshadowEQBand3Freq;
+    static juce::String paramHeadshadowEQBand3Gain;
+    static juce::String paramHeadshadowEQBand3Q;
+    static juce::String paramHeadshadowEQBand3Type;
+    static juce::String paramHeadshadowEQBand3Enabled;
+    
+    static juce::String paramHeadshadowEQBand4Freq;
+    static juce::String paramHeadshadowEQBand4Gain;
+    static juce::String paramHeadshadowEQBand4Q;
+    static juce::String paramHeadshadowEQBand4Type;
+    static juce::String paramHeadshadowEQBand4Enabled;
+    
+    static juce::String paramHeadshadowEQBand5Freq;
+    static juce::String paramHeadshadowEQBand5Gain;
+    static juce::String paramHeadshadowEQBand5Q;
+    static juce::String paramHeadshadowEQBand5Type;
+    static juce::String paramHeadshadowEQBand5Enabled;
+    
+    static juce::String paramHeadshadowEQBand6Freq;
+    static juce::String paramHeadshadowEQBand6Gain;
+    static juce::String paramHeadshadowEQBand6Q;
+    static juce::String paramHeadshadowEQBand6Type;
+    static juce::String paramHeadshadowEQBand6Enabled;
 
     // Variables from processor for UI
     juce::Array<float> outputMeterValuedB;
@@ -258,6 +296,9 @@ private:
     inline void processBuffers(AudioSampleBuffer& buffer,
         std::vector<int> orderChans,
         std::vector<std::vector<float>> delayCoeffs);
+    
+    // Reinitialize headshadow processing when channel counts change
+    void reinitializeHeadshadowProcessing();
 
     // ITD Headshadow delay processing
     std::unique_ptr<RingBuffer> headshadowDelayBuffer;
@@ -265,6 +306,9 @@ private:
     std::vector<std::vector<juce::LinearSmoothedValue<float>>> headshadowSmoothedChannelCoeffs; // For m1EncodeInverse
     juce::SmoothedValue<int, juce::ValueSmoothingTypes::Linear> headshadowDelayTimeSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowWetGainSmoother;
+    
+    // Headshadow EQ processor
+    MultibandEQ headshadowEQ;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(M1PannerAudioProcessor)
