@@ -46,9 +46,10 @@ struct PannerSettings
 
     // ITD Headshadow parameters (Pro feature)
     bool headshadowActive = false;
-    int headshadowDelayTime = 600; // 0.2ms to 1ms range
+    float headshadowDelayTime = 600; // 0.2ms to 1ms range
     float headshadowWetGain = -18.0f;   // -60dB to +12dB range
     float delayDistance = 1.0;
+    bool showHeadshadowUI = false;
 };
 
 struct MixerSettings

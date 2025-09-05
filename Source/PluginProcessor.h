@@ -188,9 +188,6 @@ public:
     
     // ITD Headshadow processing (Pro feature)
     Mach1Encode<float> m1EncodeInverse;
-    bool headshadowActive = false;
-    int headshadowDelayTime = 600; // Default 600 microseconds (0.6ms)
-    float headshadowWetGain = 0.0f;   // Default no wet signal
 
     // External components
     MixerSettings monitorSettings;

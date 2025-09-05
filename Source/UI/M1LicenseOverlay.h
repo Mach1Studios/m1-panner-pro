@@ -56,7 +56,7 @@ public:
             currentY,
             panelWidth - 40,
             30
-        }).withAlignment(TEXT_CENTER).text("M1 Panner Pro License").draw();
+        }).withAlignment(TEXT_CENTER).text("M1-Panner Pro License").draw();
         
         currentY += 40;
 
@@ -96,7 +96,7 @@ private:
         if (!productUnlockManager) return;
 
         // Status indicator circle
-        float indicatorSize = 16;
+        float indicatorSize = 5;
         float indicatorX = centerX - panelWidth * 0.5f + 30;
         
         juce::Colour indicatorColour;

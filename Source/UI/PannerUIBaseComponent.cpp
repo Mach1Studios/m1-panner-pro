@@ -146,7 +146,7 @@ void PannerUIBaseComponent::draw()
     float knobSpeed = 250;
 
     int xOffset = 0;
-    int yOffset = 499;
+    int yOffset = 499; // lower half of parameters
     int knobWidth = 70;
     int knobHeight = 87;
     int M1LabelOffsetY = 25;
@@ -740,6 +740,29 @@ void PannerUIBaseComponent::draw()
         auto* param = params.getParameter(processor->paramAutoOrbit);
         param->setValueNotifyingHost(param->convertTo0to1(pannerState->autoOrbit));
     }
+    
+    auto& hsActiveCheckbox = m.prepare<M1Checkbox>({ 557, yOffset - M1LabelOffsetY + checkboxSlotHeight, 200, 20 })
+                                .controlling(&pannerState->headshadowActive)
+                                .withLabel("HS ACTIVE");
+    hsActiveCheckbox.enabled = true;
+    hsActiveCheckbox.draw();
+
+    if (hsActiveCheckbox.changed)
+    {
+        auto& params = processor->getValueTreeState();
+        auto* param = params.getParameter(processor->paramHeadshadowActive);
+        param->setValueNotifyingHost(param->convertTo0to1(pannerState->headshadowActive));
+    }
+    
+    auto& hsShowUICheckBox = m.prepare<M1Checkbox>({ 557, yOffset - M1LabelOffsetY + checkboxSlotHeight * 2, 200, 20 })
+                                .controlling(&pannerState->showHeadshadowUI)
+                                .withLabel("HS SETTINGS");
+    hsShowUICheckBox.enabled = true;
+    hsShowUICheckBox.draw();
+
+    if (hsShowUICheckBox.changed)
+    {
+    }
 
     // Note: pitchwheel range in inverted to draw top down
     auto& pitchWheel = m.prepare<M1PitchWheel>({ 445, 30 - 10, 80, 400 + 20 });
@@ -1268,6 +1291,21 @@ void PannerUIBaseComponent::draw()
         processor->pannerSettings.state = 1;
     }
 
+    // Handle headshadow modal using Murka pattern
+    if (pannerState->showHeadshadowUI)
+    {
+        auto& headshadowComponent = m.prepare<M1HeadShadowComponent>(MurkaShape(0, 0, m.getSize().width(), m.getSize().height() - 40));
+        headshadowComponent.setProcessor(processor);
+        headshadowComponent.setActive(true);
+        
+        // Pass cursor control functions
+        headshadowComponent.cursorHide = cursorHide;
+        headshadowComponent.cursorShow = cursorShow;
+        headshadowComponent.cursorShowAndTeleportBack = cursorShowAndTeleportBack;
+        
+        headshadowComponent.draw();
+    }
+    
     // Draw the alert if active
     if (hasActiveAlert)
     {
@@ -1388,6 +1426,7 @@ void PannerUIBaseComponent::paint(juce::Graphics& g)
 void PannerUIBaseComponent::resized()
 {
     // This is called when the PannerUIBaseComponent is resized.
+    // Headshadow modal sizing is handled automatically in the draw method
 }
 
 void PannerUIBaseComponent::postAlert(const Mach1::AlertData& alert)

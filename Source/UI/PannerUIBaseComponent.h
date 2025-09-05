@@ -18,6 +18,7 @@
 #include "PannerReticleField.h"
 #include "M1AlertComponent.h"
 #include "M1LicenseOverlay.h"
+#include "M1HeadShadowComponent.h"
 #include "../AlertData.h"
 
 //==============================================================================
@@ -90,6 +91,6 @@ private:
         bool isActive = false;
         ProductUnlockManager* productManager = nullptr;
     } currentLicenseOverlay;
-
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PannerUIBaseComponent)
 };

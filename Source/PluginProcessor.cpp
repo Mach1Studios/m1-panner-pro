@@ -96,7 +96,7 @@ M1PannerAudioProcessor::M1PannerAudioProcessor()
 #endif
           // ITD Headshadow parameters (Pro feature)
           std::make_unique<juce::AudioParameterBool>(juce::ParameterID(paramHeadshadowActive, 1), TRANS("Headshadow Active"), pannerSettings.headshadowActive),
-          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 200, 10000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
+          std::make_unique<juce::AudioParameterInt>(juce::ParameterID(paramHeadshadowDelayTime, 1), TRANS("Headshadow Delay"), 200, 1000, pannerSettings.headshadowDelayTime, "", [](int v, int) { return juce::String(v) + "μS"; }, [](const juce::String& t) { return t.dropLastCharacters(2).getIntValue(); }),
           std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(paramHeadshadowWetGain, 1), TRANS("Headshadow Wet Gain"), juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), pannerSettings.headshadowWetGain, "", juce::AudioProcessorParameter::genericParameter, [](float v, int) { return juce::String(v, 1) + " dB"; }, [](const juce::String& t) { return t.dropLastCharacters(3).getFloatValue(); }),
           
           // Headshadow EQ Band 1 (HPF)
@@ -740,7 +740,6 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
 //        if (isFeatureUnlocked(ProductUnlockManager::UnlockableFeature::ITDProcessing))
 //        {
             pannerSettings.headshadowActive = (bool)newValue;
-            headshadowActive = (bool)newValue;
             parameters.getParameter(paramHeadshadowActive)->setValue((bool)newValue);
 //        }
 //        else
@@ -760,13 +759,11 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == paramHeadshadowDelayTime)
     {
         pannerSettings.headshadowDelayTime = (int)newValue;
-        headshadowDelayTime = (int)newValue;
         parameters.getParameter(paramHeadshadowDelayTime)->setValue((int)newValue);
     }
     else if (parameterID == paramHeadshadowWetGain)
     {
         pannerSettings.headshadowWetGain = newValue;
-        headshadowWetGain = newValue;
         parameters.getParameter(paramHeadshadowWetGain)->setValue(newValue);
     }
     // EQ Band 1 parameters
@@ -1127,7 +1124,7 @@ void M1PannerAudioProcessor::updateM1EncodePoints()
     pannerSettings.m1Encode.generatePointResults();
     
     // Configure m1EncodeInverse for headshadow processing (Pro feature)
-    if (headshadowActive)
+    if (pannerSettings.headshadowActive)
     {
         // Set up m1EncodeInverse with same input/output modes
         m1EncodeInverse.setInputMode(pannerSettings.m1Encode.getInputMode());
@@ -1212,7 +1209,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     // Set m1Encode obj values for processing
     auto gainCoeffs = pannerSettings.m1Encode.getGains();
-    auto headshadowGainCoeffs = headshadowActive ? m1EncodeInverse.getGains() : std::vector<std::vector<float>>();
+    auto headshadowGainCoeffs = pannerSettings.headshadowActive ? m1EncodeInverse.getGains() : std::vector<std::vector<float>>();
 
     // vector of input channel buffers
     juce::AudioSampleBuffer mainInput = getBusBuffer(buffer, true, 0);
@@ -1222,7 +1219,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     juce::AudioSampleBuffer mainOutput = getBusBuffer(buffer, false, 0);
 
     // Update headshadow delay time smoother
-    headshadowDelayTimeSmoother.setTargetValue(headshadowDelayTime);
+    headshadowDelayTimeSmoother.setTargetValue(pannerSettings.headshadowDelayTime);
 
     // input pan balance for stereo input
     if (mainInput.getNumChannels() > 1 && pannerSettings.m1Encode.getInputMode() == Mach1EncodeInputMode::Stereo)
@@ -1245,7 +1242,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     
     // Resize headshadow processing buffer for copied input signals
-    if (headshadowActive)
+    if (pannerSettings.headshadowActive)
     {
         headshadowAudioDataIn.resize(mainInput.getNumChannels());
         for (int input_channel = 0; input_channel < mainInput.getNumChannels(); input_channel++)
@@ -1265,7 +1262,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             for (int output_channel = 0; output_channel < pannerSettings.m1Encode.getOutputChannelsCount(); output_channel++)
             {
                 smoothedChannelCoeffs[input_channel][output_channel].setTargetValue(0.0f);
-                if (headshadowActive)
+                if (pannerSettings.headshadowActive)
                 {
                     headshadowSmoothedChannelCoeffs[input_channel][output_channel].setTargetValue(0.0f);
                 }
@@ -1277,7 +1274,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             memcpy(audioDataIn[input_channel].data(), mainInput.getReadPointer(input_channel), sizeof(float) * buffer.getNumSamples());
 
             // Copy input data to headshadow buffer if headshadow is active
-            if (headshadowActive)
+            if (pannerSettings.headshadowActive)
             {
                 memcpy(headshadowAudioDataIn[input_channel].data(), mainInput.getReadPointer(input_channel), sizeof(float) * buffer.getNumSamples());
             }
@@ -1289,7 +1286,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 smoothedChannelCoeffs[input_channel][output_channel].setTargetValue(gainCoeffs[input_channel][output_channel]);
                 
                 // Set headshadow coefficients if active
-                if (headshadowActive)
+                if (pannerSettings.headshadowActive)
                 {
                     auto headshadowGainCoeffs = m1EncodeInverse.getGains();
                     if (!headshadowGainCoeffs.empty() && 
@@ -1345,7 +1342,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 float inValue = audioDataIn[input_channel][sample];
                 float headshadowInValue;
 
-                if (headshadowActive && input_channel < headshadowAudioDataIn.size())
+                if (pannerSettings.headshadowActive && input_channel < headshadowAudioDataIn.size())
                 {
                     headshadowInValue = headshadowAudioDataIn[input_channel][sample];
                 }
@@ -1370,8 +1367,8 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                         buf.addSample(output_channel, sample, inValue * spatialGainCoeff);
                         
                         // Get the next inverse Mach1Encode coeff
-                        if (headshadowActive && 
-                            input_channel < headshadowSmoothedChannelCoeffs.size() && 
+                        if (pannerSettings.headshadowActive &&
+                            input_channel < headshadowSmoothedChannelCoeffs.size() &&
                             output_channel < headshadowSmoothedChannelCoeffs[input_channel].size())
                         {
                             float headshadowSpatialGainCoeff = headshadowSmoothedChannelCoeffs[input_channel][output_channel].getNextValue();
@@ -1402,7 +1399,7 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
 
     // HEADSHADOW DELAY PROCESSING
-    if (headshadowActive)
+    if (pannerSettings.headshadowActive)
     {
         // Get headshadow coefficients from m1EncodeInverse
         auto headshadowGainCoeffs = m1EncodeInverse.getGains();
@@ -1466,9 +1463,9 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             {
                 float mainSample = buf.getSample(output_channel, sample);
                 
-                if (headshadowActive)
+                if (pannerSettings.headshadowActive)
                 {
-                    float wetGain = juce::Decibels::decibelsToGain(headshadowWetGain);
+                    float wetGain = juce::Decibels::decibelsToGain(pannerSettings.headshadowWetGain);
                     float headshadowSample = headshadow_buf.getSample(output_channel, sample) * wetGain;
                     float mixed_sample = mainSample + headshadowSample;
                     mainOutput.addSample(output_channel_reordered, sample, mixed_sample);

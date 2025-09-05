@@ -12,6 +12,7 @@ target_sources(${PLUGIN_NAME} PRIVATE    Config.h
                                     ProductUnlockManager.h
                                     ProductUnlockManager.cpp
                                     RingBuffer.h
+                                    MultibandEQ.h
                                     WindowUtil.h
                                     WindowUtil.cpp
                                     UI/M1Label.h
@@ -27,6 +28,7 @@ target_sources(${PLUGIN_NAME} PRIVATE    Config.h
                                     UI/PannerReticleField.h
                                     UI/M1AlertComponent.h
                                     UI/M1LicenseOverlay.h
+                                    UI/M1HeadShadowComponent.h
                                     UI/PannerUIBaseComponent.h
                                     UI/PannerUIBaseComponent.cpp)
 
