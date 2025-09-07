@@ -28,6 +28,7 @@ target_sources(${PLUGIN_NAME} PRIVATE    Config.h
                                     UI/PannerReticleField.h
                                     UI/M1AlertComponent.h
                                     UI/M1LicenseOverlay.h
+                                    UI/M1EQComponent.h
                                     UI/M1HeadShadowComponent.h
                                     UI/PannerUIBaseComponent.h
                                     UI/PannerUIBaseComponent.cpp)

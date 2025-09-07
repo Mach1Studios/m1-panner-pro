@@ -278,6 +278,9 @@ public:
     std::unique_ptr<ProductUnlockManager> productUnlockManager;
     ProductUnlockManager* getProductUnlockManager() const { return productUnlockManager.get(); }
     bool isFeatureUnlocked(ProductUnlockManager::UnlockableFeature feature) const;
+    
+    // Headshadow EQ processor (public for UI access)
+    MultibandEQ headshadowEQ;
 
 private:
     TrackProperties track_properties;
@@ -303,9 +306,6 @@ private:
     std::vector<std::vector<juce::LinearSmoothedValue<float>>> headshadowSmoothedChannelCoeffs; // For m1EncodeInverse
     juce::SmoothedValue<int, juce::ValueSmoothingTypes::Linear> headshadowDelayTimeSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> headshadowWetGainSmoother;
-    
-    // Headshadow EQ processor
-    MultibandEQ headshadowEQ;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(M1PannerAudioProcessor)

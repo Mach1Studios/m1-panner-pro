@@ -116,7 +116,7 @@ private:
         
         m.setColor(indicatorColour.getRed(), indicatorColour.getGreen(), 
                    indicatorColour.getBlue(), indicatorColour.getAlpha());
-        m.drawCircle(indicatorX, currentY + 5, indicatorSize);
+        m.drawCircle(indicatorX, currentY + indicatorSize/2, indicatorSize);
 
         // Status text
         m.setColor(LABEL_TEXT_COLOR);
