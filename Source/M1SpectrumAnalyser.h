@@ -49,12 +49,22 @@ public:
         // Sum all channels -> mono
         // (normalised by channel count to avoid huge level swings)
         const float norm = 1.0f / juce::jmax(1, numChannels);
+        const float noiseGate = 1e-6f; // -120 dB noise gate
+        float maxLevel = 0.0f;
+        
         for (int i = 0; i < numSamples; ++i)
         {
             float s = 0.0f;
             for (int ch = 0; ch < numChannels; ++ch)
                 s += buffer.getReadPointer(ch)[i];
             mono[i] = s * norm;
+            maxLevel = juce::jmax(maxLevel, std::abs(mono[i]));
+        }
+        
+        // If the entire buffer is below noise gate, zero it out
+        if (maxLevel < noiseGate)
+        {
+            std::fill(mono, mono + numSamples, 0.0f);
         }
 
         pushSamples(mono, numSamples);
@@ -119,7 +129,9 @@ private:
                                         freq * (float)fftSize / (float)sampleRate);
 
             const float mag = fftData[(size_t)bin];
-            const float db  = 20.0f * std::log10(juce::jmax(mag, 1.0e-9f));
+            // Apply noise gate to magnitude - if below threshold, treat as silence
+            const float gatedMag = (mag > 1e-7f) ? mag : 1.0e-9f;
+            const float db  = 20.0f * std::log10(juce::jmax(gatedMag, 1.0e-9f));
             const float v   = juce::jlimit(0.0f, 1.0f, juce::jmap(db, minDb, maxDb, 0.0f, 1.0f));
 
             scopeData[(size_t)i] = v;

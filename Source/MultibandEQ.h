@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <atomic>
+#include <array>
 
 /**
  * Single-header multiband EQ processor with 6 configurable bands
@@ -30,17 +32,25 @@ public:
         // Keep a simple IIR filter per band
         juce::dsp::IIR::Filter<float>                    filter;
         juce::dsp::IIR::Coefficients<float>::Ptr         coefficients;
+        
+        // Thread-safe parameter updating (avoid smart pointer operations)
+        std::atomic<bool> needsUpdate { false };
+        std::atomic<float> pendingFrequency { 1000.0f };
+        std::atomic<float> pendingGain { 0.0f };
+        std::atomic<float> pendingQ { 0.707f };
+        std::atomic<int> pendingType { Peak };
+        std::atomic<bool> pendingEnabled { false };
     };
 
     MultibandEQ()
     {
-        // Default bands
-        bands[0] = {  80.0f,   0.0f, 0.707f, HighPass,  false };  // HPF
-        bands[1] = { 200.0f,   0.0f, 0.707f, LowShelf,  false };  // Low shelf
-        bands[2] = { 800.0f,   0.0f, 1.0f,   Peak,      false };  // Low mid
-        bands[3] = { 3200.0f,  0.0f, 1.0f,   Peak,      false };  // High mid
-        bands[4] = { 8000.0f,  0.0f, 0.707f, HighShelf, false };  // High shelf
-        bands[5] = { 12000.0f, 0.0f, 0.707f, LowPass,   false };  // LPF
+        // Initialize bands individually due to atomic members
+        bands[0].frequency = 80.0f;   bands[0].gain = 0.0f; bands[0].q = 0.707f; bands[0].type = HighPass;  bands[0].enabled = false;
+        bands[1].frequency = 200.0f;  bands[1].gain = 0.0f; bands[1].q = 0.707f; bands[1].type = LowShelf;  bands[1].enabled = false;
+        bands[2].frequency = 800.0f;  bands[2].gain = 0.0f; bands[2].q = 1.0f;   bands[2].type = Peak;      bands[2].enabled = false;
+        bands[3].frequency = 3200.0f; bands[3].gain = 0.0f; bands[3].q = 1.0f;   bands[3].type = Peak;      bands[3].enabled = false;
+        bands[4].frequency = 8000.0f; bands[4].gain = 0.0f; bands[4].q = 0.707f; bands[4].type = HighShelf; bands[4].enabled = false;
+        bands[5].frequency = 12000.0f;bands[5].gain = 0.0f; bands[5].q = 0.707f; bands[5].type = LowPass;   bands[5].enabled = false;
 
         // Safe default; prepare() will set the correct sample rate and refresh
         sampleRate = 44100.0;
@@ -71,8 +81,8 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].frequency = juce::jlimit(20.0f, 20000.0f, frequency);
-            updateBandCoefficients(bandIndex);
+            bands[bandIndex].pendingFrequency.store(juce::jlimit(20.0f, 20000.0f, frequency));
+            bands[bandIndex].needsUpdate.store(true);
         }
     }
 
@@ -80,8 +90,8 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].gain = juce::jlimit(-24.0f, 24.0f, gainDb);
-            updateBandCoefficients(bandIndex);
+            bands[bandIndex].pendingGain.store(juce::jlimit(-24.0f, 24.0f, gainDb));
+            bands[bandIndex].needsUpdate.store(true);
         }
     }
 
@@ -89,8 +99,8 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].q = juce::jlimit(0.1f, 10.0f, q);
-            updateBandCoefficients(bandIndex);
+            bands[bandIndex].pendingQ.store(juce::jlimit(0.1f, 10.0f, q));
+            bands[bandIndex].needsUpdate.store(true);
         }
     }
 
@@ -98,15 +108,18 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].type = type;
-            updateBandCoefficients(bandIndex);
+            bands[bandIndex].pendingType.store(static_cast<int>(type));
+            bands[bandIndex].needsUpdate.store(true);
         }
     }
 
     void setBandEnabled(int bandIndex, bool enabled)
     {
         if (isValidBand(bandIndex))
-            bands[bandIndex].enabled = enabled;
+        {
+            bands[bandIndex].pendingEnabled.store(enabled);
+            bands[bandIndex].needsUpdate.store(true);
+        }
     }
 
     // Process a single sample (used in your headshadow path)
@@ -116,9 +129,24 @@ public:
 
         for (auto& band : bands)
         {
+            // Apply pending parameter updates safely on audio thread
+            if (band.needsUpdate.load())
+            {
+                // Copy atomic values to local variables
+                band.frequency = band.pendingFrequency.load();
+                band.gain = band.pendingGain.load();
+                band.q = band.pendingQ.load();
+                band.type = static_cast<FilterType>(band.pendingType.load());
+                band.enabled = band.pendingEnabled.load();
+                
+                // Update coefficients on audio thread (safe)
+                updateBandCoefficientsAudioThread(band);
+                band.needsUpdate.store(false);
+            }
+            
             // Only process when the band is enabled and we have valid coefficients
             if (band.enabled && band.coefficients != nullptr)
-                output = band.filter.processSample(output); // <-- instance call, not static
+                output = band.filter.processSample(output);
         }
 
         return output;
@@ -168,6 +196,14 @@ private:
             return;
 
         auto& band = bands[bandIndex];
+        updateBandCoefficientsAudioThread(band);
+    }
+    
+    void updateBandCoefficientsAudioThread(Band& band)
+    {
+        if (sampleRate <= 0.0)
+            return;
+
         juce::dsp::IIR::Coefficients<float>::Ptr newCoeffs;
 
         switch (band.type)
@@ -203,10 +239,9 @@ private:
 
         if (newCoeffs != nullptr)
         {
-            // Store and apply to the filter.
-            // NB: IIR::Filter has no public `.state` – assign the coefficients pointer.
-            band.coefficients          = newCoeffs;
-            band.filter.coefficients   = newCoeffs;
+            // Safe to assign coefficients on audio thread
+            band.coefficients = newCoeffs;
+            band.filter.coefficients = newCoeffs;
         }
     }
 };

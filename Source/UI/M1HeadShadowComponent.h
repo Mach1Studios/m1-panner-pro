@@ -37,23 +37,22 @@ public:
         m.enableFill();
         m.drawRectangle(0, 0, shape.size.x, shape.size.y);
 
-        // Title
-        m.setColor(APP_LABEL_TEXT_COLOR);
-        m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
-        m.prepare<M1Label>({ 10, 6, 220, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ").draw();
-
         // Layout split: EQ top, controls bottom
         const float margin = 12.0f;
         const float rightW = 160;
         const float controls_row_H = 128;
         const float eqX = margin, eqY = 28.0f, eqW = shape.size.x - margin*3, eqH = shape.size.y - eqY - margin - controls_row_H;
         // Controls row
-        const float colX = margin;
         const float delay_colX = (float)(shape.size.x*0.65) + margin;
-        float y = eqH + margin*3 + eqY;
+        float y = eqY + eqH;
         int knobWidth = 70;
         int knobHeight = 84;
         int labelOffsetY = 25;
+        
+        // Title
+        m.setColor(APP_LABEL_TEXT_COLOR);
+        m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
+        m.prepare<M1Label>({ margin, 6, 220, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ").draw();
         
         // EQ area
         auto& eq = m.prepare<M1EQComponent>({ eqX, eqY, eqW, eqH }).withProcessorAndEQ(processor, &processor->headshadowEQ);
@@ -68,17 +67,24 @@ public:
         };
         spectrum.draw();
 
-        // Delay µs
+        // EQ Controls
         m.setColor(APP_LABEL_TEXT_COLOR);
         m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
-        m.prepare<M1Label>({ delay_colX, y - 18, rightW, 16 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • MICRODELAY").draw();
+        m.prepare<M1Label>({ eqX, y, 260, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ CONTROLS").draw();
+        // TODO: Add knob controls for selected EQ band here
+
+        // Delay µs
+        m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
+        m.prepare<M1Label>({ delay_colX, y, 220, 18 }).withTextAlignment(TEXT_LEFT).text("• MICRODELAY").draw();
+
+        y += 44; // add space for header
 
         auto& hs_delay_time_knob = m.prepare<M1Knob>({ delay_colX, y, knobWidth, knobHeight }).controlling((float*)&pannerState->headshadowDelayTime);
         hs_delay_time_knob.rangeTo   = 200.0f;  // min
         hs_delay_time_knob.rangeFrom = 1000.0f; // max
         hs_delay_time_knob.floatingPointPrecision = 0;
         hs_delay_time_knob.postfix    = "µs";
-        hs_delay_time_knob.speed      = 250;
+        hs_delay_time_knob.speed      = 250; // TODO: implement shift speed
         hs_delay_time_knob.defaultValue = 600.0f;
         hs_delay_time_knob.cursorHide = cursorHide;
         hs_delay_time_knob.cursorShow = cursorShowAndTeleportBack;
@@ -97,7 +103,7 @@ public:
         hs_wet_gain_knob.rangeFrom = 6.0f;
         hs_wet_gain_knob.floatingPointPrecision = 1;
         hs_wet_gain_knob.postfix    = "dB";
-        hs_wet_gain_knob.speed      = 250;
+        hs_wet_gain_knob.speed      = 250; // TODO: implement shift speed
         hs_wet_gain_knob.defaultValue = -18.0f;
         hs_wet_gain_knob.cursorHide = cursorHide;
         hs_wet_gain_knob.cursorShow = cursorShowAndTeleportBack;

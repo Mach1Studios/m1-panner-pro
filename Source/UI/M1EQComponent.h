@@ -206,6 +206,8 @@ private:
                 .draw();
 
             // interactions per-node
+            // TODO: Mousewheel = Q
+            // TODO: Change Band Type Hotkey
             if (mouseDownPressed(0) && over && draggingBand < 0)
             {
                 draggingBand = bi;
