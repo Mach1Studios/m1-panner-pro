@@ -62,6 +62,7 @@ public:
     // Cursor control functions (passed from parent)
     std::function<void()> cursorHide = [](){};
     std::function<void()> cursorShow = [](){};
+    std::function<void()> cursorShowAndTeleportBack = [](){};
 
 private:
     M1PannerAudioProcessor* processor { nullptr };

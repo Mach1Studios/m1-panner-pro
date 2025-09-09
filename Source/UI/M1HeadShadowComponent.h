@@ -61,9 +61,12 @@ public:
         eq.draw();
 
         // [Spectrum] Combined output spectrum (sum of all output channels)
-        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(eqX, eqY, eqW, eqH));
-        spectrum.fetchSpectrum = [this](std::vector<float>& out) {
-            return processor->getCombinedSpectrum(out);
+        const float L = 38.0f, R = 12.0f, T = 10.0f, B = 22.0f; // EQ Component margins
+        const float W = eqW - (L + R);
+        const float H = eqH - (T + B);
+        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(L+R, T+B+2, W, H));
+        spectrum.fetchSpectrum = [this](std::vector<float>& output) {
+            return processor->getCombinedSpectrum(output);
         };
         spectrum.draw();
 
