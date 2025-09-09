@@ -567,6 +567,9 @@ void M1PannerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
             postAlert(alert);
         }
     }
+
+    // [Spectrum] Prepare combined output spectrum analyser
+    spectrumAnalyser.prepare(sampleRate, samplesPerBlock);
 }
 
 void M1PannerAudioProcessor::releaseResources()
@@ -1477,6 +1480,9 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             }
         }
     }
+
+    // [Spectrum] Push the finished output bus (all channels) to the analyser
+    spectrumAnalyser.pushAudioBuffer(mainOutput);
 
     // update meters
     outputMeterValuedB.resize(mainOutput.getNumChannels()); // expand meter UI number

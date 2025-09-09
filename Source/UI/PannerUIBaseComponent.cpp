@@ -1296,12 +1296,9 @@ void PannerUIBaseComponent::draw()
     {
         auto& headshadowComponent = m.prepare<M1HeadShadowComponent>(MurkaShape(0, 0, m.getSize().width(), m.getSize().height() - 40));
         headshadowComponent.withProcessor(processor);
-        
-        // Pass cursor control functions
         headshadowComponent.cursorHide = cursorHide;
         headshadowComponent.cursorShow = cursorShow;
         headshadowComponent.cursorShowAndTeleportBack = cursorShowAndTeleportBack;
-        
         headshadowComponent.draw();
     }
     

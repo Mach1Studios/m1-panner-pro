@@ -10,6 +10,7 @@
 #include "ProductUnlockManager.h"
 #include "RingBuffer.h"
 #include "MultibandEQ.h"
+#include "M1SpectrumAnalyser.h"
 
 //==============================================================================
 /**
@@ -281,6 +282,7 @@ public:
     
     // Headshadow EQ processor (public for UI access)
     MultibandEQ headshadowEQ;
+    bool getCombinedSpectrum(std::vector<float>& out) const { return spectrumAnalyser.getMagnitudesCopy(out); }
 
 private:
     TrackProperties track_properties;
@@ -294,11 +296,12 @@ private:
     std::vector<std::vector<juce::LinearSmoothedValue<float>>> smoothedChannelCoeffs;
 
     inline void processBuffers(AudioSampleBuffer& buffer,
-        std::vector<int> orderChans,
-        std::vector<std::vector<float>> delayCoeffs);
+    std::vector<int> orderChans,
+    std::vector<std::vector<float>> delayCoeffs);
     
     // Reinitialize headshadow processing when channel counts change
     void reinitializeHeadshadowProcessing();
+    M1SpectrumAnalyser spectrumAnalyser;
 
     // ITD Headshadow delay processing
     std::unique_ptr<RingBuffer> headshadowDelayBuffer;
