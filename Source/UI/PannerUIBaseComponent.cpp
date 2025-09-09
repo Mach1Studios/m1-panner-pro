@@ -1295,8 +1295,7 @@ void PannerUIBaseComponent::draw()
     if (pannerState->showHeadshadowUI)
     {
         auto& headshadowComponent = m.prepare<M1HeadShadowComponent>(MurkaShape(0, 0, m.getSize().width(), m.getSize().height() - 40));
-        headshadowComponent.setProcessor(processor);
-        headshadowComponent.setActive(true);
+        headshadowComponent.withProcessor(processor);
         
         // Pass cursor control functions
         headshadowComponent.cursorHide = cursorHide;
