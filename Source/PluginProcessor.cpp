@@ -1481,9 +1481,10 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    // [Spectrum] Push the finished output bus (all channels) to the analyser
-    spectrumAnalyser.pushAudioBuffer(mainOutput);
-
+    // [Spectrum] Push the headshadow buffer output (all channels) to the analyser
+    spectrumAnalyser.pushAudioBuffer(headshadow_buf); // using the entire signal output from mainOutput obfuscates the visual response
+    // TODO: Make a UI switch to show headshadow spectrum vs all output spectrum here
+    
     // update meters
     outputMeterValuedB.resize(mainOutput.getNumChannels()); // expand meter UI number
     for (int output_channel = 0; output_channel < mainOutput.getNumChannels(); output_channel++)

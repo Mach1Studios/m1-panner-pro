@@ -30,6 +30,19 @@ public:
         return *this;
     }
 
+    // Allow parent to receive selection and to share a selection int (for highlight)
+    M1EQComponent& withSelectedBandPtr (int* externalSelectedBandPtr)
+    {
+        selectedBandPtr = externalSelectedBandPtr;
+        return *this;
+    }
+    std::function<void(int)> onBandSelected;
+
+    // Cursor control functions (passed from parent)
+    std::function<void()> cursorHide = [](){};
+    std::function<void()> cursorShow = [](){};
+    std::function<void()> cursorShowAndTeleportBack = [](){};
+
     void internalDraw (Murka& m)
     {
         if (processor == nullptr || eqPtr == nullptr)
@@ -59,11 +72,6 @@ public:
         handleNodes(m, L, T, W, H, fMin, fMax, gMin, gMax);
     }
 
-    // Cursor control functions (passed from parent)
-    std::function<void()> cursorHide = [](){};
-    std::function<void()> cursorShow = [](){};
-    std::function<void()> cursorShowAndTeleportBack = [](){};
-
 private:
     M1PannerAudioProcessor* processor { nullptr };
     MultibandEQ*            eqPtr     { nullptr };
@@ -72,6 +80,8 @@ private:
     int   draggingBand  = -1;
     bool  freqGainGestureOpen = false;
     bool  qGestureOpen        = false;
+
+    int*  selectedBandPtr { nullptr }; // shared with parent for highlight
 
     // Mapping helpers (log frequency, linear dB)
     static inline float freqToX (float f, float L, float W, float fMin, float fMax)
@@ -98,7 +108,7 @@ private:
     void drawGrid (Murka& m, float L, float T, float W, float H,
                    float fMin, float fMax, float gMin, float gMax)
     {
-        // fine grid
+        // fine horizontal grid
         m.setColor(GRID_LINES_1_RGBA);
         for (int gi = -24; gi <= 24; gi += 3)
         {
@@ -107,7 +117,8 @@ private:
         }
         // bold 0 dB axis
         m.setColor(GRID_LINES_3_RGBA);
-        m.drawLine(L, gainToY(0.0f, T, H, gMin, gMax), L + W, gainToY(0.0f, T, H, gMin, gMax));
+        const float y0 = gainToY(0.0f, T, H, gMin, gMax);
+        m.drawLine(L, y0, L + W, y0);
 
         // frequency ticks (log decade markers)
         m.setColor(GRID_LINES_2);
@@ -140,7 +151,6 @@ private:
     void drawResponse (Murka& m, float L, float T, float W, float H,
                        float fMin, float fMax, float gMin, float gMax)
     {
-        // sample magnitude
         static constexpr int N = 256;
         std::array<juce::Point<float>, N> pts{};
 
@@ -155,7 +165,6 @@ private:
             pts[(size_t)i].y = gainToY(juce::jlimit(gMin, gMax, dB), T, H, gMin, gMax);
         }
 
-        // draw
         m.setColor(ENABLED_PARAM);
         for (int i = 1; i < N; ++i)
             m.drawLine(pts[(size_t)(i-1)].x, pts[(size_t)(i-1)].y, pts[(size_t)i].x, pts[(size_t)i].y);
@@ -170,16 +179,14 @@ private:
         {
             auto& b = eqPtr->getBand(bi);
 
-            // node position
             float x = freqToX(b.frequency, L, W, fMin, fMax);
             float y = gainToY  (b.gain,     T, H, gMin, gMax);
 
-            // hover / hit test
             bool over = MurkaShape(x - 8, y - 8, 16, 16).inside(mousePosition());
             if (over) hoverBand = bi;
             if (!isHovered()) over = false;
 
-            // color by enabled/type
+            // base color by enabled
             if (!b.enabled) m.setColor(DISABLED_PARAM);
             else            m.setColor(M1_ACTION_YELLOW);
 
@@ -187,10 +194,20 @@ private:
             m.enableFill();
             m.drawCircle(x, y, over ? 7.0f : 6.0f);
             m.disableFill();
-            m.setColor(GRID_LINES_3_RGBA);
-            m.drawCircle(x, y, 10.0f);
 
-            // Q indicator (ring thickness/size hint)
+            // selection ring (if parent shares a selected index)
+            if (selectedBandPtr != nullptr && *selectedBandPtr == bi)
+            {
+                m.setColor(GRID_LINES_4_RGB);
+                m.drawCircle(x, y, 12.0f);
+            }
+            else
+            {
+                m.setColor(GRID_LINES_3_RGBA);
+                m.drawCircle(x, y, 10.0f);
+            }
+
+            // Q indicator
             if (b.enabled)
             {
                 m.setColor(GRID_LINES_4_RGB);
@@ -198,7 +215,7 @@ private:
                 m.drawCircle(x, y, 10.0f + qWidth * 0.6f);
             }
 
-            // type badge
+            // band type badge
             m.setColor(REF_LABEL_TEXT_COLOR);
             m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE - 7);
             m.prepare<M1Label>({ x + 8, y - 6, 40, 12 })
@@ -206,20 +223,20 @@ private:
                 .text(filterTypeShort(b.type))
                 .draw();
 
-            // interactions per-node
-            // TODO: Mousewheel = Q
-            // TODO: Change Band Type Hotkey
+            // interactions
             if (mouseDownPressed(0) && over && draggingBand < 0)
             {
                 draggingBand = bi;
-                // open gestures for freq+gain
+                // selection callback for external knobs
+                if (onBandSelected) onBandSelected(bi);
+                if (selectedBandPtr) *selectedBandPtr = bi;
+
                 beginBandGesture(vts, bi, true, false);
                 cursorHide();
             }
 
             if (draggingBand == bi && mouseDown(0))
             {
-                // modify freq/gain or Q with Alt
                 if (isKeyHeld(murka::MurkaKey::MURKA_KEY_ALT))
                 {
                     if (!qGestureOpen) beginBandGesture(vts, bi, false, true);

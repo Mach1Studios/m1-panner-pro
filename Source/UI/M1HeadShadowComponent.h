@@ -20,14 +20,19 @@ using namespace murka;
 class M1HeadShadowComponent : public murka::View<M1HeadShadowComponent>
 {
 public:
-    M1HeadShadowComponent& withProcessor (M1PannerAudioProcessor* p)
+    M1HeadShadowComponent& withProcessor(M1PannerAudioProcessor* p)
     {
-        processor    = p;
-        pannerState  = &p->pannerSettings;
+        processor   = p;
+        pannerState = &p->pannerSettings;
         return *this;
     }
 
-    void internalDraw (Murka& m)
+    // Cursor control hooks (provided by parent)
+    std::function<void()> cursorHide = [](){};
+    std::function<void()> cursorShow = [](){};
+    std::function<void()> cursorShowAndTeleportBack = [](){};
+
+    void internalDraw(Murka& m)
     {
         if (processor == nullptr || pannerState == nullptr)
             return;
@@ -37,95 +42,276 @@ public:
         m.enableFill();
         m.drawRectangle(0, 0, shape.size.x, shape.size.y);
 
-        // Layout split: EQ top, controls bottom
         const float margin = 12.0f;
-        const float rightW = 160;
-        const float controls_row_H = 128;
-        const float eqX = margin, eqY = 28.0f, eqW = shape.size.x - margin*3, eqH = shape.size.y - eqY - margin - controls_row_H;
-        // Controls row
-        const float delay_colX = (float)(shape.size.x*0.65) + margin;
-        float y = eqY + eqH;
-        int knobWidth = 70;
-        int knobHeight = 84;
-        int labelOffsetY = 25;
-        
-        // Title
+        const float eqTitleH = 22.0f;
+        const float controlsRowH = 128.0f;
+
+        // EQ block geometry
+        const float eqX = margin;
+        const float eqY = 6.0f + eqTitleH; // under title
+        const float eqW = shape.size.x - margin*2.0f;
+        const float eqH = shape.size.y - eqY - margin - controlsRowH;
+
+        // Inner plot margins (match M1EQComponent)
+        const float L = 38.0f, R = 12.0f, T = 10.0f, B = 22.0f;
+        const float plotW = eqW - (L + R);
+        const float plotH = eqH - (T + B);
+
+        // Titles
         m.setColor(APP_LABEL_TEXT_COLOR);
         m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
-        m.prepare<M1Label>({ margin, 6, 220, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ").draw();
-        
-        // EQ area
-        auto& eq = m.prepare<M1EQComponent>({ eqX, eqY, eqW, eqH }).withProcessorAndEQ(processor, &processor->headshadowEQ);
+        m.prepare<M1Label>({ margin, 6, 220, 18 })
+            .withTextAlignment(TEXT_LEFT)
+            .text("HEADSHADOW • EQ")
+            .draw();
+
+        // EQ plot & interaction
+        auto& eq = m.prepare<M1EQComponent>({ eqX, eqY, eqW, eqH })
+                        .withProcessorAndEQ(processor, &processor->headshadowEQ)
+                        .withSelectedBandPtr(&selectedBand);
         eq.cursorHide = cursorHide;
         eq.cursorShow = cursorShowAndTeleportBack;
+        eq.onBandSelected = [this](int i){ selectedBand = i; };
         eq.draw();
 
-        // [Spectrum] Combined output spectrum (sum of all output channels)
-        const float L = 38.0f, R = 12.0f, T = 10.0f, B = 22.0f; // EQ Component margins
-        const float W = eqW - (L + R);
-        const float H = eqH - (T + B);
-        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(L+R, T+B+2, W, H));
-        spectrum.fetchSpectrum = [this](std::vector<float>& output) {
+        // Spectrum overlay — place exactly over inner plot area
+        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(eqX + L, eqY + T, plotW, plotH));
+        spectrum.fetchSpectrum = [this](std::vector<float>& output)
+        {
             return processor->getCombinedSpectrum(output);
         };
-        spectrum.draw();
+        spectrum.visibleMinDb = -48.0f;   // match EQ grid
+        spectrum.visibleMaxDb =  0.0f;   // match EQ grid
+        // analyzer produces 0..1 from -100..0 dB -> convert back inside SpectrumView
+        spectrum.sourceMinDb  = -100.0f;
+        spectrum.sourceMaxDb  =    0.0f;
+        spectrum.draw(); // draw AFTER EQ grid so it sits on top
 
-        // EQ Controls
+        // ==== Bottom controls ===================================================
+        const int knobW = 70;
+        const int knobH = 84;
+        const int labelOffsetY = 25;
+
+        float y = eqY + eqH; // start under EQ
         m.setColor(APP_LABEL_TEXT_COLOR);
         m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
-        m.prepare<M1Label>({ eqX, y, 260, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ CONTROLS").draw();
-        // TODO: Add knob controls for selected EQ band here
 
-        // Delay µs
+        // Left block: EQ band knobs (selected band)
+        m.prepare<M1Label>({ margin, y, 260, 18 })
+            .withTextAlignment(TEXT_LEFT)
+            .text("HEADSHADOW • EQ CONTROLS")
+            .draw();
+
+        y += 44.0f;
+
+        if (selectedBand >= 0 && selectedBand < 6)
+        {
+            auto& band = processor->headshadowEQ.getBand(selectedBand);
+
+            // --- FREQ knob (20..20k Hz) ---
+            auto& freqKnob = m.prepare<M1Knob>({ margin + 4, y, knobW, knobH })
+                                 .controlling(&band.frequency);
+            freqKnob.rangeFrom = 20.0f;
+            freqKnob.rangeTo   = 20000.0f;
+            freqKnob.floatingPointPrecision = 0;
+            freqKnob.postfix = "Hz";
+            freqKnob.cursorHide = cursorHide;
+            freqKnob.cursorShow = cursorShowAndTeleportBack;
+            freqKnob.draw();
+
+            m.setColor(ENABLED_PARAM);
+            auto& fLabel = m.prepare<M1Label>(MurkaShape(margin + 4, y - labelOffsetY, knobW, knobH));
+            fLabel.label = "FREQ";
+            fLabel.alignment = TEXT_CENTER;
+            fLabel.enabled = true;
+            fLabel.highlighted = freqKnob.hovered;
+            fLabel.draw();
+
+            // --- Q knob (0.1..10) ---
+            auto& qKnob = m.prepare<M1Knob>({ margin + 4 + knobW + 8, y, knobW, knobH })
+                              .controlling(&band.q);
+            qKnob.rangeFrom = 0.10f;
+            qKnob.rangeTo   = 10.0f;
+            qKnob.floatingPointPrecision = 2;
+            qKnob.cursorHide = cursorHide;
+            qKnob.cursorShow = cursorShowAndTeleportBack;
+            qKnob.draw();
+
+            m.setColor(ENABLED_PARAM);
+            auto& qLabel = m.prepare<M1Label>(MurkaShape(margin + 4 + knobW + 8, y - labelOffsetY, knobW, knobH));
+            qLabel.label = "Q";
+            qLabel.alignment = TEXT_CENTER;
+            qLabel.enabled = true;
+            qLabel.highlighted = qKnob.hovered;
+            qLabel.draw();
+
+            // --- GAIN knob (–24..+24 dB) ---
+            auto& gKnob = m.prepare<M1Knob>({ margin + 4 + (knobW + 8) * 2, y, knobW, knobH })
+                              .controlling(&band.gain);
+            gKnob.rangeFrom = -24.0f;
+            gKnob.rangeTo   =  24.0f;
+            gKnob.floatingPointPrecision = 1;
+            gKnob.postfix = "dB";
+            gKnob.prefix = (band.gain > 0.0f ? "+" : "");
+            gKnob.cursorHide = cursorHide;
+            gKnob.cursorShow = cursorShowAndTeleportBack;
+            gKnob.draw();
+
+            m.setColor(ENABLED_PARAM);
+            auto& gLabel = m.prepare<M1Label>(MurkaShape(margin + 4 + (knobW + 8) * 2, y - labelOffsetY, knobW, knobH));
+            gLabel.label = "GAIN";
+            gLabel.alignment = TEXT_CENTER;
+            gLabel.enabled = true;
+            gLabel.highlighted = gKnob.hovered;
+            gLabel.draw();
+
+            // --- update processor parameters with gesture wrapping ---
+            auto& vts = processor->getValueTreeState();
+
+            // helpers to get parameter IDs (same mapping used inside M1EQComponent)
+            auto paramIdFreq = [&](int i)->juce::String
+            {
+                switch (i)
+                {
+                    case 0: return M1PannerAudioProcessor::paramHeadshadowEQBand1Freq;
+                    case 1: return M1PannerAudioProcessor::paramHeadshadowEQBand2Freq;
+                    case 2: return M1PannerAudioProcessor::paramHeadshadowEQBand3Freq;
+                    case 3: return M1PannerAudioProcessor::paramHeadshadowEQBand4Freq;
+                    case 4: return M1PannerAudioProcessor::paramHeadshadowEQBand5Freq;
+                    default:return M1PannerAudioProcessor::paramHeadshadowEQBand6Freq;
+                }
+            };
+            auto paramIdGain = [&](int i)->juce::String
+            {
+                switch (i)
+                {
+                    case 0: return M1PannerAudioProcessor::paramHeadshadowEQBand1Gain;
+                    case 1: return M1PannerAudioProcessor::paramHeadshadowEQBand2Gain;
+                    case 2: return M1PannerAudioProcessor::paramHeadshadowEQBand3Gain;
+                    case 3: return M1PannerAudioProcessor::paramHeadshadowEQBand4Gain;
+                    case 4: return M1PannerAudioProcessor::paramHeadshadowEQBand5Gain;
+                    default:return M1PannerAudioProcessor::paramHeadshadowEQBand6Gain;
+                }
+            };
+            auto paramIdQ = [&](int i)->juce::String
+            {
+                switch (i)
+                {
+                    case 0: return M1PannerAudioProcessor::paramHeadshadowEQBand1Q;
+                    case 1: return M1PannerAudioProcessor::paramHeadshadowEQBand2Q;
+                    case 2: return M1PannerAudioProcessor::paramHeadshadowEQBand3Q;
+                    case 3: return M1PannerAudioProcessor::paramHeadshadowEQBand4Q;
+                    case 4: return M1PannerAudioProcessor::paramHeadshadowEQBand5Q;
+                    default:return M1PannerAudioProcessor::paramHeadshadowEQBand6Q;
+                }
+            };
+
+            // Gesture open/close tracking
+            static bool freqGesture = false, qGesture = false, gainGesture = false;
+
+            // Freq
+            if (freqKnob.changed)
+            {
+                auto* p = vts.getParameter(paramIdFreq(selectedBand));
+                if (freqKnob.draggingNow && !freqGesture) { p->beginChangeGesture(); freqGesture = true; }
+                p->setValueNotifyingHost(p->convertTo0to1(band.frequency));
+            }
+            if (freqGesture && !freqKnob.draggingNow)
+            {
+                auto* p = vts.getParameter(paramIdFreq(selectedBand));
+                p->endChangeGesture(); freqGesture = false;
+            }
+
+            // Q
+            if (qKnob.changed)
+            {
+                auto* p = vts.getParameter(paramIdQ(selectedBand));
+                if (qKnob.draggingNow && !qGesture) { p->beginChangeGesture(); qGesture = true; }
+                p->setValueNotifyingHost(p->convertTo0to1(band.q));
+            }
+            if (qGesture && !qKnob.draggingNow)
+            {
+                auto* p = vts.getParameter(paramIdQ(selectedBand));
+                p->endChangeGesture(); qGesture = false;
+            }
+
+            // Gain
+            if (gKnob.changed)
+            {
+                auto* p = vts.getParameter(paramIdGain(selectedBand));
+                if (gKnob.draggingNow && !gainGesture) { p->beginChangeGesture(); gainGesture = true; }
+                p->setValueNotifyingHost(p->convertTo0to1(band.gain));
+            }
+            if (gainGesture && !gKnob.draggingNow)
+            {
+                auto* p = vts.getParameter(paramIdGain(selectedBand));
+                p->endChangeGesture(); gainGesture = false;
+            }
+        }
+        else
+        {
+            // No selection hint
+            m.setColor(REF_LABEL_TEXT_COLOR);
+            m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE - 2);
+            m.prepare<M1Label>({ margin + 4, y + 8, 260, 18 })
+                .withTextAlignment(TEXT_LEFT)
+                .text("Click a band in the EQ to edit FREQ / Q / GAIN")
+                .draw();
+        }
+
+        // Right block: Microdelay controls
+        float rightBlockX = (float)(shape.size.x * 0.62);
+        m.setColor(APP_LABEL_TEXT_COLOR);
         m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
-        m.prepare<M1Label>({ delay_colX, y, 220, 18 }).withTextAlignment(TEXT_LEFT).text("• MICRODELAY").draw();
+        m.prepare<M1Label>({ rightBlockX, eqY + eqH, 260, 18 })
+            .withTextAlignment(TEXT_LEFT)
+            .text("HEADSHADOW • MICRODELAY")
+            .draw();
 
-        y += 44; // add space for header
+        float ky = eqY + eqH + 44.0f;
+        rightBlockX += 44.0f;
 
-        auto& hs_delay_time_knob = m.prepare<M1Knob>({ delay_colX, y, knobWidth, knobHeight }).controlling((float*)&pannerState->headshadowDelayTime);
-        hs_delay_time_knob.rangeTo   = 200.0f;  // min
-        hs_delay_time_knob.rangeFrom = 1000.0f; // max
-        hs_delay_time_knob.floatingPointPrecision = 0;
-        hs_delay_time_knob.postfix    = "µs";
-        hs_delay_time_knob.speed      = 250; // TODO: implement shift speed
-        hs_delay_time_knob.defaultValue = 600.0f;
-        hs_delay_time_knob.cursorHide = cursorHide;
-        hs_delay_time_knob.cursorShow = cursorShowAndTeleportBack;
-        hs_delay_time_knob.draw();
-        
-        auto& hs_dt_Label = m.prepare<M1Label>(MurkaShape(delay_colX, y - labelOffsetY, knobWidth, knobHeight));
-        hs_dt_Label.label = "TIME";
-        hs_dt_Label.alignment = TEXT_CENTER;
-        hs_dt_Label.enabled = true;
-        hs_dt_Label.highlighted = hs_delay_time_knob.hovered;
-        hs_dt_Label.draw();
+        // Delay Time µs  (200 .. 1000)
+        auto& hsDelay = m.prepare<M1Knob>({ rightBlockX, ky, knobW, knobH })
+                            .controlling((float*)&pannerState->headshadowDelayTime);
+        hsDelay.rangeFrom = 200.0f;   // min
+        hsDelay.rangeTo   = 1000.0f;  // max
+        hsDelay.floatingPointPrecision = 0;
+        hsDelay.postfix = "µs";
+        hsDelay.cursorHide = cursorHide;
+        hsDelay.cursorShow = cursorShowAndTeleportBack;
+        hsDelay.draw();
 
-        // Wet Gain dB
-        auto& hs_wet_gain_knob = m.prepare<M1Knob>({ delay_colX + knobWidth + 2, y, knobWidth, knobHeight }).controlling(&pannerState->headshadowWetGain);
-        hs_wet_gain_knob.rangeTo   = -60.0f;
-        hs_wet_gain_knob.rangeFrom = 6.0f;
-        hs_wet_gain_knob.floatingPointPrecision = 1;
-        hs_wet_gain_knob.postfix    = "dB";
-        hs_wet_gain_knob.speed      = 250; // TODO: implement shift speed
-        hs_wet_gain_knob.defaultValue = -18.0f;
-        hs_wet_gain_knob.cursorHide = cursorHide;
-        hs_wet_gain_knob.cursorShow = cursorShowAndTeleportBack;
-        hs_wet_gain_knob.draw();
-        
-        auto& hs_wg_Label = m.prepare<M1Label>(MurkaShape(delay_colX + knobWidth + 2, y - labelOffsetY, knobWidth, knobHeight));
-        hs_wg_Label.label = "WET GAIN";
-        hs_wg_Label.alignment = TEXT_CENTER;
-        hs_wg_Label.enabled = true;
-        hs_wg_Label.highlighted = hs_wet_gain_knob.hovered;
-        hs_wg_Label.draw();
+        m.setColor(ENABLED_PARAM);
+        auto& hsDtLabel = m.prepare<M1Label>(MurkaShape(rightBlockX, ky - labelOffsetY, knobW, knobH));
+        hsDtLabel.label = "TIME";
+        hsDtLabel.alignment = TEXT_CENTER;
+        hsDtLabel.enabled = true;
+        hsDtLabel.highlighted = hsDelay.hovered;
+        hsDtLabel.draw();
+
+        // Wet Gain dB (–60 .. +6)
+        auto& hsWet = m.prepare<M1Knob>({ rightBlockX + knobW + 2, ky, knobW, knobH })
+                          .controlling(&pannerState->headshadowWetGain);
+        hsWet.rangeFrom = -60.0f;
+        hsWet.rangeTo   =   6.0f;
+        hsWet.floatingPointPrecision = 1;
+        hsWet.postfix = "dB";
+        hsWet.cursorHide = cursorHide;
+        hsWet.cursorShow = cursorShowAndTeleportBack;
+        hsWet.draw();
+
+        auto& hsWgLabel = m.prepare<M1Label>(MurkaShape(rightBlockX + knobW + 2, ky - labelOffsetY, knobW, knobH));
+        hsWgLabel.label = "WET GAIN";
+        hsWgLabel.alignment = TEXT_CENTER;
+        hsWgLabel.enabled = true;
+        hsWgLabel.highlighted = hsWet.hovered;
+        hsWgLabel.draw();
     }
-
-    // Cursor helpers (like other Murka widgets in project)
-    std::function<void()> cursorHide = [&]() { /* optional: no-cursor while dragging */ };
-    std::function<void()> cursorShow = [&]() { /* restore cursor */ };
-    std::function<void()> cursorShowAndTeleportBack = [](){};
 
 private:
     M1PannerAudioProcessor* processor   { nullptr };
     PannerSettings*         pannerState { nullptr };
+
+    int selectedBand = 2; // default to a mid peak
 };
