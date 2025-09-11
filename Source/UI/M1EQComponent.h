@@ -30,6 +30,8 @@ public:
         return *this;
     }
 
+    int  getSelectedBandIndex() const noexcept { return selectedBand; }
+    
     // Allow parent to receive selection and to share a selection int (for highlight)
     M1EQComponent& withSelectedBandPtr (int* externalSelectedBandPtr)
     {
@@ -78,6 +80,7 @@ private:
 
     int   hoverBand     = -1;
     int   draggingBand  = -1;
+    int   selectedBand  = 0;     // track which band is selected
     bool  freqGainGestureOpen = false;
     bool  qGestureOpen        = false;
 
@@ -226,6 +229,7 @@ private:
             // interactions
             if (mouseDownPressed(0) && over && draggingBand < 0)
             {
+                selectedBand = bi; // remember selection
                 draggingBand = bi;
                 // selection callback for external knobs
                 if (onBandSelected) onBandSelected(bi);
