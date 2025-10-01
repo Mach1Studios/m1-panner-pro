@@ -68,8 +68,8 @@ public:
         const float W = eqW - (L + R);
         const float H = eqH - (T + B);
 
-        // IMPORTANT: position relative to eqX/eqY so axes line up
-        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(eqX + L, eqY + T + 2.0f, W, H + 6.0f));
+        // IMPORTANT: position relative to eqX/eqY so axes line up perfectly
+        auto& spectrum = m.prepare<M1SpectrumView>(MurkaShape(eqX + L, eqY + T, W, H));
         spectrum.fetchSpectrum = [this](std::vector<float>& output) { return processor->getCombinedSpectrum(output); };
         spectrum.draw();
 
