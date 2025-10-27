@@ -33,6 +33,11 @@ public:
         juce::dsp::IIR::Filter<float>                    filter;
         juce::dsp::IIR::Coefficients<float>::Ptr         coefficients;
         
+        // Smoothed parameter values to prevent zipper noise
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedFrequency;
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedGain;
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedQ;
+        
         // Thread-safe parameter updating (avoid smart pointer operations)
         std::atomic<bool> needsUpdate { false };
         std::atomic<float> pendingFrequency { 1000.0f };
@@ -40,6 +45,10 @@ public:
         std::atomic<float> pendingQ { 0.707f };
         std::atomic<int> pendingType { Peak };
         std::atomic<bool> pendingEnabled { false };
+        
+        // Track if we need to update coefficients this block
+        int samplesUntilNextUpdate = 0;
+        static constexpr int updateInterval = 32; // Update coefficients every 32 samples
     };
 
     MultibandEQ()
@@ -54,9 +63,16 @@ public:
 
         // Safe default; prepare() will set the correct sample rate and refresh
         sampleRate = 44100.0;
-
+        
+        // Initialize smoothed values
         for (int i = 0; i < 6; ++i)
+        {
+            bands[i].smoothedFrequency.setCurrentAndTargetValue(bands[i].frequency);
+            bands[i].smoothedGain.setCurrentAndTargetValue(bands[i].gain);
+            bands[i].smoothedQ.setCurrentAndTargetValue(bands[i].q);
+            bands[i].samplesUntilNextUpdate = 0;
             updateBandCoefficients(i);
+        }
     }
 
     void prepare(const juce::dsp::ProcessSpec& spec)
@@ -64,7 +80,18 @@ public:
         sampleRate = spec.sampleRate;
 
         for (auto& band : bands)
+        {
             band.filter.prepare(spec);
+            
+            // Initialize smoothers with appropriate ramp time (50ms for smooth parameter changes)
+            band.smoothedFrequency.reset(sampleRate, 0.05);
+            band.smoothedGain.reset(sampleRate, 0.05);
+            band.smoothedQ.reset(sampleRate, 0.05);
+            
+            band.smoothedFrequency.setCurrentAndTargetValue(band.frequency);
+            band.smoothedGain.setCurrentAndTargetValue(band.gain);
+            band.smoothedQ.setCurrentAndTargetValue(band.q);
+        }
 
         // Refresh all coefficients at the new sample rate
         for (int i = 0; i < 6; ++i)
@@ -134,16 +161,40 @@ public:
             // Apply pending parameter updates safely on audio thread
             if (band.needsUpdate.load())
             {
-                // Copy atomic values to local variables
-                band.frequency = band.pendingFrequency.load();
-                band.gain = band.pendingGain.load();
-                band.q = band.pendingQ.load();
+                // Set target values for smoothing instead of immediate update
+                band.smoothedFrequency.setTargetValue(band.pendingFrequency.load());
+                band.smoothedGain.setTargetValue(band.pendingGain.load());
+                band.smoothedQ.setTargetValue(band.pendingQ.load());
+                
+                // Type and enabled don't need smoothing
                 band.type = static_cast<FilterType>(band.pendingType.load());
                 band.enabled = band.pendingEnabled.load();
                 
+                band.needsUpdate.store(false);
+            }
+            
+            // Update coefficients at regular intervals using smoothed values
+            if (band.samplesUntilNextUpdate <= 0)
+            {
+                // Get current smoothed values
+                band.frequency = band.smoothedFrequency.getNextValue();
+                band.gain = band.smoothedGain.getNextValue();
+                band.q = band.smoothedQ.getNextValue();
+                
                 // Update coefficients on audio thread (safe)
                 updateBandCoefficientsAudioThread(band);
-                band.needsUpdate.store(false);
+                
+                band.samplesUntilNextUpdate = Band::updateInterval;
+            }
+            else
+            {
+                // Skip smoothed value update if not updating coefficients
+                band.samplesUntilNextUpdate--;
+                
+                // But still advance the smoothers to keep them in sync
+                band.smoothedFrequency.skip(1);
+                band.smoothedGain.skip(1);
+                band.smoothedQ.skip(1);
             }
             
             // Only process when the band is enabled and we have valid coefficients
