@@ -119,16 +119,25 @@ private:
         // dB range: clamp -100..0 dB
         constexpr float minDb = -100.0f, maxDb = 0.0f;
         const int nyquistBins = fftSize / 2;
+        constexpr float fMin = 20.0f, fMax = 20000.0f;
 
         for (int i = 0; i < scopeSize; ++i)
         {
             const float norm = (float)i / (float)(scopeSize - 1);
-            // 20 Hz .. 20 kHz log scale
-            const float freq = 20.0f * std::pow(10.0f, norm * std::log10(20000.0f / 20.0f));
-            int bin = (int)juce::jlimit(0.0f, (float)(nyquistBins - 1),
-                                        freq * (float)fftSize / (float)sampleRate);
-
-            const float mag = fftData[(size_t)bin];
+            // Use same logarithmic frequency mapping as EQ component
+            const float freq = fMin * std::pow(fMax / fMin, norm);
+            
+            // Convert frequency to FFT bin with interpolation for better accuracy
+            const float binFloat = freq * (float)fftSize / (float)sampleRate;
+            const int binLow = (int)juce::jlimit(0.0f, (float)(nyquistBins - 1), binFloat);
+            const int binHigh = juce::jmin(nyquistBins - 1, binLow + 1);
+            const float fraction = binFloat - (float)binLow;
+            
+            // Interpolate between adjacent bins for smoother frequency response
+            const float magLow = fftData[(size_t)binLow];
+            const float magHigh = fftData[(size_t)binHigh];
+            const float mag = magLow + fraction * (magHigh - magLow);
+            
             // Apply noise gate to magnitude - if below threshold, treat as silence
             const float gatedMag = (mag > 1e-7f) ? mag : 1.0e-9f;
             const float db  = 20.0f * std::log10(juce::jmax(gatedMag, 1.0e-9f));

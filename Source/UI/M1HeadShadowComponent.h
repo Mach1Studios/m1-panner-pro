@@ -55,6 +55,44 @@ public:
         m.setColor(APP_LABEL_TEXT_COLOR);
         m.setFontFromRawData(PLUGIN_FONT, BINARYDATA_FONT, BINARYDATA_FONT_SIZE, DEFAULT_FONT_SIZE);
         m.prepare<M1Label>({ margin, 6, 280, 18 }).withTextAlignment(TEXT_LEFT).text("HEADSHADOW • EQ").draw();
+        
+        // Close button (top-right corner with X symbol)
+        const float closeButtonSize = 24.0f;
+        const float closeButtonX = shape.size.x - margin - closeButtonSize/2;
+        const float closeButtonY = 0;
+        
+        // Check if mouse is over close button
+        bool closeButtonHovered = MurkaShape(closeButtonX, closeButtonY, closeButtonSize, closeButtonSize).inside(mousePosition());
+        
+        // Draw close button background
+        if (closeButtonHovered) {
+            m.setColor(APP_LABEL_TEXT_COLOR);
+        } else {
+            m.setColor(GRID_LINES_3_RGBA);
+        }
+        m.enableFill();
+        m.drawRectangle(closeButtonX, closeButtonY, closeButtonSize, closeButtonSize);
+        
+        // Draw X symbol
+        m.setColor(closeButtonHovered ? BACKGROUND_GREY : APP_LABEL_TEXT_COLOR);
+        m.setLineWidth(2);
+        const float xPadding = 6.0f;
+        m.drawLine(closeButtonX + xPadding, closeButtonY + xPadding, 
+                   closeButtonX + closeButtonSize - xPadding, closeButtonY + closeButtonSize - xPadding);
+        m.drawLine(closeButtonX + closeButtonSize - xPadding, closeButtonY + xPadding, 
+                   closeButtonX + xPadding, closeButtonY + closeButtonSize - xPadding);
+        m.setLineWidth(1);
+        m.disableFill();
+        
+        // Handle close button click
+        if (closeButtonHovered && mouseDownPressed(0)) {
+            pannerState->showHeadshadowUI = false;
+        }
+        
+        // Handle ESC key to close modal
+        if (isKeyPressed(murka::MurkaKey::MURKA_KEY_ESC)) {
+            pannerState->showHeadshadowUI = false;
+        }
 
         // EQ area
         auto& eq = m.prepare<M1EQComponent>({ eqX, eqY, eqW, eqH }).withProcessorAndEQ(processor, &processor->headshadowEQ);
@@ -214,6 +252,7 @@ public:
                 .controlling(&selBand.enabled)
                 .withLabel("ACTIVE")
                 .withFontSize(DEFAULT_FONT_SIZE - 2);
+            activeCheckbox.enabled = pannerState->headshadowActive;
             activeCheckbox.draw();
 
             // Band selection indicator - moved to the right
