@@ -744,6 +744,13 @@ void M1PannerAudioProcessor::parameterChanged(const juce::String& parameterID, f
 //        {
             pannerSettings.headshadowActive = (bool)newValue;
             parameters.getParameter(paramHeadshadowActive)->setValue((bool)newValue);
+            
+            // Clear delay buffer when disabling headshadow to prevent looping old audio
+            if (!pannerSettings.headshadowActive && headshadowDelayBuffer)
+            {
+                headshadowDelayBuffer->clear();
+                DBG("Headshadow disabled - delay buffer cleared");
+            }
 //        }
 //        else
 //        {
@@ -1446,13 +1453,33 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     // Apply pan-law (original * pan-law + delayed * pan-law)
                     float processedSample = (originalSample * 0.707106781f) + (delayedSample * 0.707106781f);
                     
-                    // Apply EQ processing to the headshadow signal
-                    float eqProcessedSample = headshadowEQ.processSample(processedSample);
-                    headshadow_buf.setSample(channel, sample, eqProcessedSample);
+                    headshadow_buf.setSample(channel, sample, processedSample);
                 }
             }
             
             headshadowDelayBuffer->increment();
+        }
+        
+        // Apply EQ processing per channel to avoid filter state corruption
+        // Process all samples in each channel before moving to next channel
+        for (int channel = 0; channel < headshadow_buf.getNumChannels(); channel++)
+        {
+            float* channelData = headshadow_buf.getWritePointer(channel);
+            for (int sample = 0; sample < buffer.getNumSamples(); sample++)
+            {
+                channelData[sample] = headshadowEQ.processSample(channelData[sample]);
+            }
+            
+            // Reset EQ state between channels to prevent state bleed
+            headshadowEQ.reset();
+        }
+    }
+    else
+    {
+        // Clear the delay buffer when headshadow is disabled to prevent looping old audio
+        if (headshadowDelayBuffer)
+        {
+            headshadowDelayBuffer->clear();
         }
     }
 
