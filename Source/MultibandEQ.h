@@ -29,9 +29,11 @@ public:
         FilterType type       = Peak;
         bool       enabled    = false;
 
-        // Keep a simple IIR filter per band
-        juce::dsp::IIR::Filter<float>                    filter;
-        juce::dsp::IIR::Coefficients<float>::Ptr         coefficients;
+        // Single IIR filter - UI will read coefficients from this safely
+        juce::dsp::IIR::Filter<float> filter;
+        
+        // SpinLock to protect coefficient pointer access between threads
+        mutable juce::SpinLock coefficientsLock;
         
         // Smoothed parameter values to prevent zipper noise
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedFrequency;
@@ -198,7 +200,7 @@ public:
             }
             
             // Only process when the band is enabled and we have valid coefficients
-            if (band.enabled && band.coefficients != nullptr)
+            if (band.enabled && band.filter.coefficients != nullptr)
                 output = band.filter.processSample(output);
         }
 
@@ -230,17 +232,51 @@ public:
     const Band& getBand(int index) const { jassert(isValidBand(index)); return bands[index]; }
     
     // Calculate magnitude response at a given frequency for visualization
+    // Thread-safe: UI reads from audio thread's filter coefficients with lock protection
     double getMagnitudeForFrequency(double frequency) const
     {
+        if (sampleRate <= 0.0)
+            return 1.0;
+        
+        // Clamp frequency to valid range [20Hz, Nyquist frequency)
+        // JUCE asserts if frequency >= sampleRate * 0.5
+        const double nyquistFreq = sampleRate * 0.5;
+        frequency = juce::jlimit(20.0, nyquistFreq - 1.0, frequency);
+            
         double magnitude = 1.0;
         
         for (const auto& band : bands)
         {
-            if (band.enabled && band.coefficients != nullptr)
+            if (band.enabled)
             {
-                // Calculate the magnitude response of this band at the given frequency
-                double bandMagnitude = band.coefficients->getMagnitudeForFrequency(frequency, sampleRate);
-                magnitude *= bandMagnitude;
+                juce::dsp::IIR::Coefficients<float>::Ptr coeffs;
+                
+                // Thread-safe: Lock while copying the pointer
+                {
+                    const juce::SpinLock::ScopedLockType lock(band.coefficientsLock);
+                    coeffs = band.filter.coefficients;
+                }
+                
+                // Now we can safely use coeffs outside the lock
+                if (coeffs != nullptr)
+                {
+                    try
+                    {
+                        // Calculate the magnitude response of this band at the given frequency
+                        double bandMagnitude = coeffs->getMagnitudeForFrequency(frequency, sampleRate);
+                        
+                        // Check for valid result (not NaN or infinity)
+                        if (std::isfinite(bandMagnitude) && bandMagnitude > 0.0)
+                        {
+                            magnitude *= bandMagnitude;
+                        }
+                    }
+                    catch (...)
+                    {
+                        // Silently handle any exceptions during visualization
+                        // This prevents crashes in the UI thread
+                    }
+                }
             }
         }
         
@@ -267,43 +303,61 @@ private:
         if (sampleRate <= 0.0)
             return;
 
+        // Validate band parameters before creating coefficients
+        float freq = juce::jlimit(20.0f, 20000.0f, band.frequency);
+        float q = juce::jlimit(0.1f, 10.0f, band.q);
+        float gain = juce::jlimit(-24.0f, 24.0f, band.gain);
+        
         juce::dsp::IIR::Coefficients<float>::Ptr newCoeffs;
 
-        switch (band.type)
+        try
         {
-            case Bypass:
-                // All-pass so you can leave the band enabled without changing tone
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makeAllPass (sampleRate, band.frequency);
-                break;
+            switch (band.type)
+            {
+                case Bypass:
+                    // All-pass so you can leave the band enabled without changing tone
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeAllPass (sampleRate, freq);
+                    break;
 
-            case HighPass:
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, band.frequency, band.q);
-                break;
+                case HighPass:
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, freq, q);
+                    break;
 
-            case LowShelf:
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, band.frequency, band.q,
-                                                                                juce::Decibels::decibelsToGain(band.gain));
-                break;
+                case LowShelf:
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, freq, q,
+                                                                                    juce::Decibels::decibelsToGain(gain));
+                    break;
 
-            case Peak:
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, band.frequency, band.q,
-                                                                                  juce::Decibels::decibelsToGain(band.gain));
-                break;
+                case Peak:
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, freq, q,
+                                                                                      juce::Decibels::decibelsToGain(gain));
+                    break;
 
-            case HighShelf:
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, band.frequency, band.q,
-                                                                                 juce::Decibels::decibelsToGain(band.gain));
-                break;
+                case HighShelf:
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, freq, q,
+                                                                                     juce::Decibels::decibelsToGain(gain));
+                    break;
 
-            case LowPass:
-                newCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, band.frequency, band.q);
-                break;
+                case LowPass:
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, freq, q);
+                    break;
+                    
+                default:
+                    // Unknown filter type, create bypass
+                    newCoeffs = juce::dsp::IIR::Coefficients<float>::makeAllPass (sampleRate, 1000.0f);
+                    break;
+            }
+        }
+        catch (...)
+        {
+            // If coefficient creation fails, create a safe bypass filter
+            newCoeffs = juce::dsp::IIR::Coefficients<float>::makeAllPass (sampleRate, 1000.0f);
         }
 
         if (newCoeffs != nullptr)
         {
-            // Safe to assign coefficients on audio thread
-            band.coefficients = newCoeffs;
+            // Thread-safe: Lock while updating the coefficients pointer
+            const juce::SpinLock::ScopedLockType lock(band.coefficientsLock);
             band.filter.coefficients = newCoeffs;
         }
     }
