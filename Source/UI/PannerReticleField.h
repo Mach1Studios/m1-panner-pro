@@ -160,6 +160,53 @@ public:
                                   .inside(mousePosition())
                               + draggingNow;
 
+        // Drawing inverse reticle (headshadow) if active - draw first so it appears behind main reticle
+        if (pannerState->headshadowActive && (monitorState->monitor_mode >= 0 && monitorState->monitor_mode < 3) && monitorState->monitor_mode != 1)
+        {
+            // Calculate inverse reticle position (same azimuth, opposite diverge)
+            float inverseX, inverseY;
+            float azimuth = pannerState->azimuth;
+            float inverseDiverge = -pannerState->diverge;
+            
+            // Convert R,C to X,Y for inverse position
+            inverseX = cos(juce::degreesToRadians(-azimuth + 90)) * inverseDiverge * sqrt(2);
+            inverseY = sin(juce::degreesToRadians(-azimuth + 90)) * inverseDiverge * sqrt(2);
+            
+            // Clamp to widget bounds (same logic as in convertRCtoXYRaw)
+            if (inverseX > 100) {
+                auto intersection = processor->intersection_point({ 0, 0, inverseX, inverseY }, { 100, -100, 100, 100 });
+                inverseX = intersection.x;
+                inverseY = intersection.y;
+            }
+            if (inverseY > 100) {
+                auto intersection = processor->intersection_point({ 0, 0, inverseX, inverseY }, { -100, 100, 100, 100 });
+                inverseX = intersection.x;
+                inverseY = intersection.y;
+            }
+            if (inverseX < -100) {
+                auto intersection = processor->intersection_point({ 0, 0, inverseX, inverseY }, { -100, -100, -100, 100 });
+                inverseX = intersection.x;
+                inverseY = intersection.y;
+            }
+            if (inverseY < -100) {
+                auto intersection = processor->intersection_point({ 0, 0, inverseX, inverseY }, { -100, -100, 100, -100 });
+                inverseX = intersection.x;
+                inverseY = intersection.y;
+            }
+            
+            MurkaPoint inverseReticlePosition = { 
+                getSize().x / 2 + (inverseX / 100.) * getSize().x / 2,
+                getSize().y / 2 + (-inverseY / 100.) * getSize().y / 2 
+            };
+            
+            // Draw inverse reticle as grey dot
+            m.enableFill();
+            m.setColor(DISABLED_PARAM); // Grey color
+            m.drawCircle(inverseReticlePosition.x, inverseReticlePosition.y, (8 + (2 * (pannerState->elevation / 90))));
+            m.setColor(BACKGROUND_GREY); // Darker center
+            m.drawCircle(inverseReticlePosition.x, inverseReticlePosition.y, (6 + (2 * (pannerState->elevation / 90))));
+        }
+
         // Drawing central reticle
         if ((monitorState->monitor_mode >= 0 && monitorState->monitor_mode < 3) && monitorState->monitor_mode != 1)
         {

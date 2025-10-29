@@ -1715,6 +1715,48 @@ void M1PannerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     addXmlElement(root, paramHeadshadowActive, juce::String(pannerSettings.headshadowActive ? 1 : 0));
     addXmlElement(root, paramHeadshadowDelayTime, juce::String(pannerSettings.headshadowDelayTime));
     addXmlElement(root, paramHeadshadowWetGain, juce::String(pannerSettings.headshadowWetGain));
+    
+    // Headshadow EQ Band 1
+    addXmlElement(root, paramHeadshadowEQBand1Freq, juce::String(headshadowEQ.getBand(0).frequency));
+    addXmlElement(root, paramHeadshadowEQBand1Gain, juce::String(headshadowEQ.getBand(0).gain));
+    addXmlElement(root, paramHeadshadowEQBand1Q, juce::String(headshadowEQ.getBand(0).q));
+    addXmlElement(root, paramHeadshadowEQBand1Type, juce::String(static_cast<int>(headshadowEQ.getBand(0).type)));
+    addXmlElement(root, paramHeadshadowEQBand1Enabled, juce::String(headshadowEQ.getBand(0).enabled ? 1 : 0));
+    
+    // Headshadow EQ Band 2
+    addXmlElement(root, paramHeadshadowEQBand2Freq, juce::String(headshadowEQ.getBand(1).frequency));
+    addXmlElement(root, paramHeadshadowEQBand2Gain, juce::String(headshadowEQ.getBand(1).gain));
+    addXmlElement(root, paramHeadshadowEQBand2Q, juce::String(headshadowEQ.getBand(1).q));
+    addXmlElement(root, paramHeadshadowEQBand2Type, juce::String(static_cast<int>(headshadowEQ.getBand(1).type)));
+    addXmlElement(root, paramHeadshadowEQBand2Enabled, juce::String(headshadowEQ.getBand(1).enabled ? 1 : 0));
+    
+    // Headshadow EQ Band 3
+    addXmlElement(root, paramHeadshadowEQBand3Freq, juce::String(headshadowEQ.getBand(2).frequency));
+    addXmlElement(root, paramHeadshadowEQBand3Gain, juce::String(headshadowEQ.getBand(2).gain));
+    addXmlElement(root, paramHeadshadowEQBand3Q, juce::String(headshadowEQ.getBand(2).q));
+    addXmlElement(root, paramHeadshadowEQBand3Type, juce::String(static_cast<int>(headshadowEQ.getBand(2).type)));
+    addXmlElement(root, paramHeadshadowEQBand3Enabled, juce::String(headshadowEQ.getBand(2).enabled ? 1 : 0));
+    
+    // Headshadow EQ Band 4
+    addXmlElement(root, paramHeadshadowEQBand4Freq, juce::String(headshadowEQ.getBand(3).frequency));
+    addXmlElement(root, paramHeadshadowEQBand4Gain, juce::String(headshadowEQ.getBand(3).gain));
+    addXmlElement(root, paramHeadshadowEQBand4Q, juce::String(headshadowEQ.getBand(3).q));
+    addXmlElement(root, paramHeadshadowEQBand4Type, juce::String(static_cast<int>(headshadowEQ.getBand(3).type)));
+    addXmlElement(root, paramHeadshadowEQBand4Enabled, juce::String(headshadowEQ.getBand(3).enabled ? 1 : 0));
+    
+    // Headshadow EQ Band 5
+    addXmlElement(root, paramHeadshadowEQBand5Freq, juce::String(headshadowEQ.getBand(4).frequency));
+    addXmlElement(root, paramHeadshadowEQBand5Gain, juce::String(headshadowEQ.getBand(4).gain));
+    addXmlElement(root, paramHeadshadowEQBand5Q, juce::String(headshadowEQ.getBand(4).q));
+    addXmlElement(root, paramHeadshadowEQBand5Type, juce::String(static_cast<int>(headshadowEQ.getBand(4).type)));
+    addXmlElement(root, paramHeadshadowEQBand5Enabled, juce::String(headshadowEQ.getBand(4).enabled ? 1 : 0));
+    
+    // Headshadow EQ Band 6
+    addXmlElement(root, paramHeadshadowEQBand6Freq, juce::String(headshadowEQ.getBand(5).frequency));
+    addXmlElement(root, paramHeadshadowEQBand6Gain, juce::String(headshadowEQ.getBand(5).gain));
+    addXmlElement(root, paramHeadshadowEQBand6Q, juce::String(headshadowEQ.getBand(5).q));
+    addXmlElement(root, paramHeadshadowEQBand6Type, juce::String(static_cast<int>(headshadowEQ.getBand(5).type)));
+    addXmlElement(root, paramHeadshadowEQBand6Enabled, juce::String(headshadowEQ.getBand(5).enabled ? 1 : 0));
 
     // Extras
     addXmlElement(root, "trackColor_r", juce::String(osc_colour.red));
@@ -1762,6 +1804,48 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         parameterChanged(paramHeadshadowActive, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowActive, pannerSettings.headshadowActive));
         parameterChanged(paramHeadshadowDelayTime, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowDelayTime, pannerSettings.headshadowDelayTime));
         parameterChanged(paramHeadshadowWetGain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowWetGain, pannerSettings.headshadowWetGain));
+        
+        // Headshadow EQ Band 1
+        parameterChanged(paramHeadshadowEQBand1Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand1Freq, 80.0f));
+        parameterChanged(paramHeadshadowEQBand1Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand1Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand1Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand1Q, 0.707f));
+        parameterChanged(paramHeadshadowEQBand1Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand1Type, 1));
+        parameterChanged(paramHeadshadowEQBand1Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand1Enabled, 0));
+        
+        // Headshadow EQ Band 2
+        parameterChanged(paramHeadshadowEQBand2Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand2Freq, 200.0f));
+        parameterChanged(paramHeadshadowEQBand2Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand2Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand2Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand2Q, 0.707f));
+        parameterChanged(paramHeadshadowEQBand2Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand2Type, 2));
+        parameterChanged(paramHeadshadowEQBand2Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand2Enabled, 0));
+        
+        // Headshadow EQ Band 3
+        parameterChanged(paramHeadshadowEQBand3Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand3Freq, 800.0f));
+        parameterChanged(paramHeadshadowEQBand3Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand3Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand3Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand3Q, 1.0f));
+        parameterChanged(paramHeadshadowEQBand3Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand3Type, 3));
+        parameterChanged(paramHeadshadowEQBand3Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand3Enabled, 0));
+        
+        // Headshadow EQ Band 4
+        parameterChanged(paramHeadshadowEQBand4Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand4Freq, 3200.0f));
+        parameterChanged(paramHeadshadowEQBand4Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand4Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand4Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand4Q, 1.0f));
+        parameterChanged(paramHeadshadowEQBand4Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand4Type, 3));
+        parameterChanged(paramHeadshadowEQBand4Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand4Enabled, 0));
+        
+        // Headshadow EQ Band 5
+        parameterChanged(paramHeadshadowEQBand5Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand5Freq, 8000.0f));
+        parameterChanged(paramHeadshadowEQBand5Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand5Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand5Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand5Q, 0.707f));
+        parameterChanged(paramHeadshadowEQBand5Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand5Type, 4));
+        parameterChanged(paramHeadshadowEQBand5Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand5Enabled, 0));
+        
+        // Headshadow EQ Band 6
+        parameterChanged(paramHeadshadowEQBand6Freq, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand6Freq, 12000.0f));
+        parameterChanged(paramHeadshadowEQBand6Gain, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand6Gain, 0.0f));
+        parameterChanged(paramHeadshadowEQBand6Q, (float)getParameterDoubleFromXmlElement(root.get(), paramHeadshadowEQBand6Q, 0.707f));
+        parameterChanged(paramHeadshadowEQBand6Type, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand6Type, 5));
+        parameterChanged(paramHeadshadowEQBand6Enabled, (int)getParameterIntFromXmlElement(root.get(), paramHeadshadowEQBand6Enabled, 0));
 
         // Extras
         osc_colour.red = (int)getParameterIntFromXmlElement(root.get(), "trackColor_r", osc_colour.red);
@@ -1793,6 +1877,48 @@ void M1PannerAudioProcessor::setStateInformation(const void* data, int sizeInByt
         params.getParameter(paramHeadshadowActive)->setValueNotifyingHost(params.getParameter(paramHeadshadowActive)->convertTo0to1(pannerSettings.headshadowActive));
         params.getParameter(paramHeadshadowDelayTime)->setValueNotifyingHost(params.getParameter(paramHeadshadowDelayTime)->convertTo0to1(pannerSettings.headshadowDelayTime));
         params.getParameter(paramHeadshadowWetGain)->setValueNotifyingHost(params.getParameter(paramHeadshadowWetGain)->convertTo0to1(pannerSettings.headshadowWetGain));
+        
+        // Headshadow EQ Band 1
+        params.getParameter(paramHeadshadowEQBand1Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand1Freq)->convertTo0to1(headshadowEQ.getBand(0).frequency));
+        params.getParameter(paramHeadshadowEQBand1Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand1Gain)->convertTo0to1(headshadowEQ.getBand(0).gain));
+        params.getParameter(paramHeadshadowEQBand1Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand1Q)->convertTo0to1(headshadowEQ.getBand(0).q));
+        params.getParameter(paramHeadshadowEQBand1Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand1Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(0).type)));
+        params.getParameter(paramHeadshadowEQBand1Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand1Enabled)->convertTo0to1(headshadowEQ.getBand(0).enabled));
+        
+        // Headshadow EQ Band 2
+        params.getParameter(paramHeadshadowEQBand2Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand2Freq)->convertTo0to1(headshadowEQ.getBand(1).frequency));
+        params.getParameter(paramHeadshadowEQBand2Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand2Gain)->convertTo0to1(headshadowEQ.getBand(1).gain));
+        params.getParameter(paramHeadshadowEQBand2Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand2Q)->convertTo0to1(headshadowEQ.getBand(1).q));
+        params.getParameter(paramHeadshadowEQBand2Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand2Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(1).type)));
+        params.getParameter(paramHeadshadowEQBand2Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand2Enabled)->convertTo0to1(headshadowEQ.getBand(1).enabled));
+        
+        // Headshadow EQ Band 3
+        params.getParameter(paramHeadshadowEQBand3Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand3Freq)->convertTo0to1(headshadowEQ.getBand(2).frequency));
+        params.getParameter(paramHeadshadowEQBand3Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand3Gain)->convertTo0to1(headshadowEQ.getBand(2).gain));
+        params.getParameter(paramHeadshadowEQBand3Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand3Q)->convertTo0to1(headshadowEQ.getBand(2).q));
+        params.getParameter(paramHeadshadowEQBand3Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand3Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(2).type)));
+        params.getParameter(paramHeadshadowEQBand3Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand3Enabled)->convertTo0to1(headshadowEQ.getBand(2).enabled));
+        
+        // Headshadow EQ Band 4
+        params.getParameter(paramHeadshadowEQBand4Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand4Freq)->convertTo0to1(headshadowEQ.getBand(3).frequency));
+        params.getParameter(paramHeadshadowEQBand4Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand4Gain)->convertTo0to1(headshadowEQ.getBand(3).gain));
+        params.getParameter(paramHeadshadowEQBand4Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand4Q)->convertTo0to1(headshadowEQ.getBand(3).q));
+        params.getParameter(paramHeadshadowEQBand4Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand4Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(3).type)));
+        params.getParameter(paramHeadshadowEQBand4Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand4Enabled)->convertTo0to1(headshadowEQ.getBand(3).enabled));
+        
+        // Headshadow EQ Band 5
+        params.getParameter(paramHeadshadowEQBand5Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand5Freq)->convertTo0to1(headshadowEQ.getBand(4).frequency));
+        params.getParameter(paramHeadshadowEQBand5Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand5Gain)->convertTo0to1(headshadowEQ.getBand(4).gain));
+        params.getParameter(paramHeadshadowEQBand5Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand5Q)->convertTo0to1(headshadowEQ.getBand(4).q));
+        params.getParameter(paramHeadshadowEQBand5Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand5Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(4).type)));
+        params.getParameter(paramHeadshadowEQBand5Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand5Enabled)->convertTo0to1(headshadowEQ.getBand(4).enabled));
+        
+        // Headshadow EQ Band 6
+        params.getParameter(paramHeadshadowEQBand6Freq)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand6Freq)->convertTo0to1(headshadowEQ.getBand(5).frequency));
+        params.getParameter(paramHeadshadowEQBand6Gain)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand6Gain)->convertTo0to1(headshadowEQ.getBand(5).gain));
+        params.getParameter(paramHeadshadowEQBand6Q)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand6Q)->convertTo0to1(headshadowEQ.getBand(5).q));
+        params.getParameter(paramHeadshadowEQBand6Type)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand6Type)->convertTo0to1(static_cast<int>(headshadowEQ.getBand(5).type)));
+        params.getParameter(paramHeadshadowEQBand6Enabled)->setValueNotifyingHost(params.getParameter(paramHeadshadowEQBand6Enabled)->convertTo0to1(headshadowEQ.getBand(5).enabled));
     }
 }
 
