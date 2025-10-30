@@ -40,6 +40,11 @@ public:
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedGain;
         juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedQ;
         
+        // Track last applied values to detect actual changes
+        float lastAppliedFrequency = 1000.0f;
+        float lastAppliedGain = 0.0f;
+        float lastAppliedQ = 0.707f;
+        
         // Thread-safe parameter updating (avoid smart pointer operations)
         std::atomic<bool> needsUpdate { false };
         std::atomic<float> pendingFrequency { 1000.0f };
@@ -48,9 +53,8 @@ public:
         std::atomic<int> pendingType { Peak };
         std::atomic<bool> pendingEnabled { false };
         
-        // Track if we need to update coefficients this block
-        int samplesUntilNextUpdate = 0;
-        static constexpr int updateInterval = 32; // Update coefficients every 32 samples
+        // Threshold for detecting meaningful parameter changes
+        static constexpr float changeThreshold = 0.01f;
     };
 
     MultibandEQ()
@@ -72,7 +76,9 @@ public:
             bands[i].smoothedFrequency.setCurrentAndTargetValue(bands[i].frequency);
             bands[i].smoothedGain.setCurrentAndTargetValue(bands[i].gain);
             bands[i].smoothedQ.setCurrentAndTargetValue(bands[i].q);
-            bands[i].samplesUntilNextUpdate = 0;
+            bands[i].lastAppliedFrequency = bands[i].frequency;
+            bands[i].lastAppliedGain = bands[i].gain;
+            bands[i].lastAppliedQ = bands[i].q;
             updateBandCoefficients(i);
         }
     }
@@ -110,7 +116,13 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].pendingFrequency.store(juce::jlimit(20.0f, 20000.0f, frequency));
+            float limitedFreq = juce::jlimit(20.0f, 20000.0f, frequency);
+            
+            // Update for UI reads (but don't trigger coefficient update yet)
+            bands[bandIndex].frequency = limitedFreq;
+            
+            // Set pending for smoothed audio thread update
+            bands[bandIndex].pendingFrequency.store(limitedFreq);
             bands[bandIndex].needsUpdate.store(true);
         }
     }
@@ -119,7 +131,13 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].pendingGain.store(juce::jlimit(-24.0f, 24.0f, gainDb));
+            float limitedGain = juce::jlimit(-24.0f, 24.0f, gainDb);
+            
+            // Update for UI reads
+            bands[bandIndex].gain = limitedGain;
+            
+            // Set pending for smoothed audio thread update
+            bands[bandIndex].pendingGain.store(limitedGain);
             bands[bandIndex].needsUpdate.store(true);
         }
     }
@@ -128,7 +146,13 @@ public:
     {
         if (isValidBand(bandIndex))
         {
-            bands[bandIndex].pendingQ.store(juce::jlimit(0.1f, 10.0f, q));
+            float limitedQ = juce::jlimit(0.1f, 10.0f, q);
+            
+            // Update for UI reads
+            bands[bandIndex].q = limitedQ;
+            
+            // Set pending for smoothed audio thread update
+            bands[bandIndex].pendingQ.store(limitedQ);
             bands[bandIndex].needsUpdate.store(true);
         }
     }
@@ -137,6 +161,10 @@ public:
     {
         if (isValidBand(bandIndex))
         {
+            // Update for UI reads (type doesn't need smoothing)
+            bands[bandIndex].type = type;
+            
+            // Set pending for audio thread
             bands[bandIndex].pendingType.store(static_cast<int>(type));
             bands[bandIndex].needsUpdate.store(true);
         }
@@ -146,6 +174,10 @@ public:
     {
         if (isValidBand(bandIndex))
         {
+            // Immediately update the enabled state so UI can read it
+            bands[bandIndex].enabled = enabled;
+            
+            // Also set pending value for audio thread synchronization
             bands[bandIndex].pendingEnabled.store(enabled);
             bands[bandIndex].needsUpdate.store(true);
         }
@@ -157,51 +189,71 @@ public:
     float processSample(float sample)
     {
         float output = sample;
+        
+        // Debug: Check input for anomalies
+        if (!std::isfinite(sample))
+        {
+            DBG("MultibandEQ: Input sample is NaN or Inf!");
+            return 0.0f;
+        }
 
         for (auto& band : bands)
         {
             // Apply pending parameter updates safely on audio thread
             if (band.needsUpdate.load())
             {
-                // Set target values for smoothing instead of immediate update
-                band.smoothedFrequency.setTargetValue(band.pendingFrequency.load());
-                band.smoothedGain.setTargetValue(band.pendingGain.load());
-                band.smoothedQ.setTargetValue(band.pendingQ.load());
+                // Get new target values
+                float newFreqTarget = band.pendingFrequency.load();
+                float newGainTarget = band.pendingGain.load();
+                float newQTarget = band.pendingQ.load();
                 
-                // Type and enabled don't need smoothing
+                // Set target values for smoothing
+                band.smoothedFrequency.setTargetValue(newFreqTarget);
+                band.smoothedGain.setTargetValue(newGainTarget);
+                band.smoothedQ.setTargetValue(newQTarget);
+                
+                // Type and enabled don't need smoothing - apply immediately
                 band.type = static_cast<FilterType>(band.pendingType.load());
                 band.enabled = band.pendingEnabled.load();
+                
+                // Update internal values for UI reads
+                band.frequency = newFreqTarget;
+                band.gain = newGainTarget;
+                band.q = newQTarget;
+                
+                // Update coefficients immediately when parameter changes
+                // Track what we applied
+                band.lastAppliedFrequency = newFreqTarget;
+                band.lastAppliedGain = newGainTarget;
+                band.lastAppliedQ = newQTarget;
+                
+                updateBandCoefficientsAudioThread(band);
                 
                 band.needsUpdate.store(false);
             }
             
-            // Update coefficients at regular intervals using smoothed values
-            if (band.samplesUntilNextUpdate <= 0)
-            {
-                // Get current smoothed values
-                band.frequency = band.smoothedFrequency.getNextValue();
-                band.gain = band.smoothedGain.getNextValue();
-                band.q = band.smoothedQ.getNextValue();
-                
-                // Update coefficients on audio thread (safe)
-                updateBandCoefficientsAudioThread(band);
-                
-                band.samplesUntilNextUpdate = Band::updateInterval;
-            }
-            else
-            {
-                // Skip smoothed value update if not updating coefficients
-                band.samplesUntilNextUpdate--;
-                
-                // But still advance the smoothers to keep them in sync
+            // Advance the smoothers for smooth audio transitions
+            // Note: We update coefficients only on parameter change, not during smoothing
+            // The smoothing is handled by the filter's internal state
+            if (band.smoothedFrequency.isSmoothing())
                 band.smoothedFrequency.skip(1);
+            if (band.smoothedGain.isSmoothing())
                 band.smoothedGain.skip(1);
+            if (band.smoothedQ.isSmoothing())
                 band.smoothedQ.skip(1);
-            }
             
             // Only process when the band is enabled and we have valid coefficients
             if (band.enabled && band.filter.coefficients != nullptr)
+            {
                 output = band.filter.processSample(output);
+            }
+        }
+        
+        // Final output check
+        if (!std::isfinite(output))
+        {
+            DBG("MultibandEQ: Final output is NaN or Inf!");
+            return 0.0f;
         }
 
         return output;
