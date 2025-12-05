@@ -1460,18 +1460,21 @@ void M1PannerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             headshadowDelayBuffer->increment();
         }
         
-        // Apply EQ processing per channel to avoid filter state corruption
-        // Process all samples in each channel before moving to next channel
+        // Apply any pending EQ parameter updates once at the start of the block
+        // This prevents coefficient changes mid-block which can cause glitches
+        headshadowEQ.applyPendingParameterUpdates();
+        
+        // Apply EQ processing per channel with independent filter state
+        // Each channel uses its own filter instances - no cross-channel contamination
         for (int channel = 0; channel < headshadow_buf.getNumChannels(); channel++)
         {
             float* channelData = headshadow_buf.getWritePointer(channel);
             for (int sample = 0; sample < buffer.getNumSamples(); sample++)
             {
-                channelData[sample] = headshadowEQ.processSample(channelData[sample]);
+                // Use channel-specific filter instances
+                channelData[sample] = headshadowEQ.processSample(channelData[sample], channel);
             }
-            
-            // Reset EQ state between channels to prevent state bleed
-            headshadowEQ.reset();
+            // No reset needed - each channel has independent filter state
         }
     }
     else

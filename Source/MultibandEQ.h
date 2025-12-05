@@ -7,10 +7,13 @@
 /**
  * Single-header multiband EQ processor with 6 configurable bands
  * Each band supports frequency, gain, Q, and filter type settings
+ * Supports multi-channel processing with independent filter state per channel
  */
 class MultibandEQ
 {
 public:
+    static constexpr int MaxChannels = 16; // Maximum supported output channels
+    
     enum FilterType
     {
         Bypass = 0,
@@ -29,21 +32,14 @@ public:
         FilterType type       = Peak;
         bool       enabled    = false;
 
-        // Single IIR filter - UI will read coefficients from this safely
-        juce::dsp::IIR::Filter<float> filter;
+        // Per-channel filter instances - each channel needs independent state
+        std::array<juce::dsp::IIR::Filter<float>, MaxChannels> filters;
+        
+        // Shared coefficients (thread-safe pointer, used by all channel filters)
+        juce::dsp::IIR::Coefficients<float>::Ptr coefficients;
         
         // SpinLock to protect coefficient pointer access between threads
         mutable juce::SpinLock coefficientsLock;
-        
-        // Smoothed parameter values to prevent zipper noise
-        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedFrequency;
-        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedGain;
-        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedQ;
-        
-        // Track last applied values to detect actual changes
-        float lastAppliedFrequency = 1000.0f;
-        float lastAppliedGain = 0.0f;
-        float lastAppliedQ = 0.707f;
         
         // Thread-safe parameter updating (avoid smart pointer operations)
         std::atomic<bool> needsUpdate { false };
@@ -52,9 +48,6 @@ public:
         std::atomic<float> pendingQ { 0.707f };
         std::atomic<int> pendingType { Peak };
         std::atomic<bool> pendingEnabled { false };
-        
-        // Threshold for detecting meaningful parameter changes
-        static constexpr float changeThreshold = 0.01f;
     };
 
     MultibandEQ()
@@ -69,16 +62,11 @@ public:
 
         // Safe default; prepare() will set the correct sample rate and refresh
         sampleRate = 44100.0;
+        numChannels = 1;
         
-        // Initialize smoothed values
+        // Initialize all band coefficients
         for (int i = 0; i < 6; ++i)
         {
-            bands[i].smoothedFrequency.setCurrentAndTargetValue(bands[i].frequency);
-            bands[i].smoothedGain.setCurrentAndTargetValue(bands[i].gain);
-            bands[i].smoothedQ.setCurrentAndTargetValue(bands[i].q);
-            bands[i].lastAppliedFrequency = bands[i].frequency;
-            bands[i].lastAppliedGain = bands[i].gain;
-            bands[i].lastAppliedQ = bands[i].q;
             updateBandCoefficients(i);
         }
     }
@@ -86,19 +74,18 @@ public:
     void prepare(const juce::dsp::ProcessSpec& spec)
     {
         sampleRate = spec.sampleRate;
+        numChannels = juce::jmin(static_cast<int>(spec.numChannels), MaxChannels);
 
+        // Prepare all per-channel filters
+        juce::dsp::ProcessSpec monoSpec = spec;
+        monoSpec.numChannels = 1;
+        
         for (auto& band : bands)
         {
-            band.filter.prepare(spec);
-            
-            // Initialize smoothers with appropriate ramp time (50ms for smooth parameter changes)
-            band.smoothedFrequency.reset(sampleRate, 0.05);
-            band.smoothedGain.reset(sampleRate, 0.05);
-            band.smoothedQ.reset(sampleRate, 0.05);
-            
-            band.smoothedFrequency.setCurrentAndTargetValue(band.frequency);
-            band.smoothedGain.setCurrentAndTargetValue(band.gain);
-            band.smoothedQ.setCurrentAndTargetValue(band.q);
+            for (int ch = 0; ch < MaxChannels; ++ch)
+            {
+                band.filters[ch].prepare(monoSpec);
+            }
         }
 
         // Refresh all coefficients at the new sample rate
@@ -109,7 +96,24 @@ public:
     void reset()
     {
         for (auto& band : bands)
-            band.filter.reset();
+        {
+            for (int ch = 0; ch < MaxChannels; ++ch)
+            {
+                band.filters[ch].reset();
+            }
+        }
+    }
+    
+    // Reset only a specific channel's filter state
+    void resetChannel(int channel)
+    {
+        if (channel < 0 || channel >= MaxChannels)
+            return;
+            
+        for (auto& band : bands)
+        {
+            band.filters[channel].reset();
+        }
     }
 
     void setBandFrequency(int bandIndex, float frequency)
@@ -183,34 +187,20 @@ public:
         }
     }
 
-    // Process a single sample (used in your headshadow path)
-    // NOTE: This processes samples with persistent filter state, so you should
-    // process all samples from one channel before moving to the next channel
-    float processSample(float sample)
+    // Call once per audio block to apply any pending parameter changes
+    // This should be called BEFORE processing samples to avoid mid-block coefficient changes
+    void applyPendingParameterUpdates()
     {
-        float output = sample;
-        
-        // Debug: Check input for anomalies
-        if (!std::isfinite(sample))
+        for (int bandIdx = 0; bandIdx < 6; ++bandIdx)
         {
-            DBG("MultibandEQ: Input sample is NaN or Inf!");
-            return 0.0f;
-        }
-
-        for (auto& band : bands)
-        {
-            // Apply pending parameter updates safely on audio thread
+            auto& band = bands[bandIdx];
+            
             if (band.needsUpdate.load())
             {
                 // Get new target values
                 float newFreqTarget = band.pendingFrequency.load();
                 float newGainTarget = band.pendingGain.load();
                 float newQTarget = band.pendingQ.load();
-                
-                // Set target values for smoothing
-                band.smoothedFrequency.setTargetValue(newFreqTarget);
-                band.smoothedGain.setTargetValue(newGainTarget);
-                band.smoothedQ.setTargetValue(newQTarget);
                 
                 // Type and enabled don't need smoothing - apply immediately
                 band.type = static_cast<FilterType>(band.pendingType.load());
@@ -221,62 +211,65 @@ public:
                 band.gain = newGainTarget;
                 band.q = newQTarget;
                 
-                // Update coefficients immediately when parameter changes
-                // Track what we applied
-                band.lastAppliedFrequency = newFreqTarget;
-                band.lastAppliedGain = newGainTarget;
-                band.lastAppliedQ = newQTarget;
-                
+                // Update coefficients - this creates new coefficients but does NOT reset filter state
                 updateBandCoefficientsAudioThread(band);
                 
                 band.needsUpdate.store(false);
             }
+        }
+    }
+    
+    // Process a single sample for a specific channel
+    // Each channel maintains independent filter state - no cross-channel contamination
+    float processSample(float sample, int channel)
+    {
+        if (channel < 0 || channel >= MaxChannels)
+            return sample;
             
-            // Advance the smoothers for smooth audio transitions
-            // Note: We update coefficients only on parameter change, not during smoothing
-            // The smoothing is handled by the filter's internal state
-            if (band.smoothedFrequency.isSmoothing())
-                band.smoothedFrequency.skip(1);
-            if (band.smoothedGain.isSmoothing())
-                band.smoothedGain.skip(1);
-            if (band.smoothedQ.isSmoothing())
-                band.smoothedQ.skip(1);
-            
+        float output = sample;
+        
+        // Debug: Check input for anomalies
+        if (!std::isfinite(sample))
+        {
+            return 0.0f;
+        }
+
+        for (auto& band : bands)
+        {
             // Only process when the band is enabled and we have valid coefficients
-            if (band.enabled && band.filter.coefficients != nullptr)
+            if (band.enabled && band.coefficients != nullptr)
             {
-                output = band.filter.processSample(output);
+                // Use the channel-specific filter instance
+                output = band.filters[channel].processSample(output);
             }
         }
         
         // Final output check
         if (!std::isfinite(output))
         {
-            DBG("MultibandEQ: Final output is NaN or Inf!");
             return 0.0f;
         }
 
         return output;
     }
     
-    // Process a single sample with independent state per invocation
-    // Use this when processing interleaved channels to avoid state corruption
-    float processSampleStateless(float sample, int channel)
+    // Legacy single-channel processSample (uses channel 0)
+    float processSample(float sample)
     {
-        // For stateless processing, we need to maintain separate state per channel
-        // Since we can't do that efficiently here, we'll just apply the magnitude response
-        // This is a simplified version - for proper filtering, you need per-channel state
-        return processSample(sample); // Fall back to stateful version for now
+        return processSample(sample, 0);
     }
 
     // Convenience buffer processing (not used by headshadow path)
     void processBlock(juce::AudioBuffer<float>& buffer)
     {
+        // Apply pending parameter updates once at block start
+        applyPendingParameterUpdates();
+        
         for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
         {
             float* data = buffer.getWritePointer(channel);
             for (int n = 0; n < buffer.getNumSamples(); ++n)
-                data[n] = processSample(data[n]);
+                data[n] = processSample(data[n], channel);
         }
     }
 
@@ -306,7 +299,7 @@ public:
                 // Thread-safe: Lock while copying the pointer
                 {
                     const juce::SpinLock::ScopedLockType lock(band.coefficientsLock);
-                    coeffs = band.filter.coefficients;
+                    coeffs = band.coefficients;
                 }
                 
                 // Now we can safely use coeffs outside the lock
@@ -334,12 +327,6 @@ public:
         
         return magnitude;
     }
-
-private:
-    Band   bands[6];
-    double sampleRate = 44100.0;
-
-    static bool isValidBand(int idx) noexcept { return idx >= 0 && idx < 6; }
 
     void updateBandCoefficients(int bandIndex)
     {
@@ -410,7 +397,25 @@ private:
         {
             // Thread-safe: Lock while updating the coefficients pointer
             const juce::SpinLock::ScopedLockType lock(band.coefficientsLock);
-            band.filter.coefficients = newCoeffs;
+            
+            // Store the shared coefficients
+            band.coefficients = newCoeffs;
+            
+            // Update coefficients for all channel filters
+            // NOTE: We do NOT reset filter state here - resetting causes clicks!
+            // The filter will adapt smoothly to the new coefficients.
+            // Only reset when explicitly needed (e.g., playback start)
+            for (int ch = 0; ch < MaxChannels; ++ch)
+            {
+                band.filters[ch].coefficients = newCoeffs;
+            }
         }
     }
+    
+private:
+    Band   bands[6];
+    double sampleRate = 44100.0;
+    int    numChannels = 1;
+
+    static bool isValidBand(int idx) noexcept { return idx >= 0 && idx < 6; }
 };
